@@ -1,12 +1,18 @@
 [Desktop Entry]
 Type=Application
 Name=Quillpad
-GenericName=Texteditor
-Comment=Schneller Texteditor mit Tabs, Syntaxfarben und Suchleiste
+GenericName=Text Editor
+GenericName[de]=Texteditor
+GenericName[fr]=Éditeur de texte
+Comment=Fast text editor with tabs, syntax colours and a search bar
+Comment[de]=Schneller Texteditor mit Tabs, Syntaxfarben und Suchleiste
+Comment[fr]=Éditeur de texte rapide avec onglets, coloration syntaxique et barre de recherche
 Exec=quillpad %F
 Icon=quillpad
 Terminal=false
 StartupWMClass=quillpad
 Categories=Utility;TextEditor;Development;
-Keywords=Text;Editor;Code;Notizen;
+Keywords=Text;Editor;Code;Notes;
+Keywords[de]=Text;Editor;Code;Notizen;
+Keywords[fr]=Texte;Éditeur;Code;Notes;
 MimeType=text/plain;text/markdown;text/x-log;text/csv;text/tab-separated-values;text/xml;application/xml;application/json;application/x-yaml;application/toml;text/x-toml;text/x-rust;text/x-python;text/x-csrc;text/x-chdr;text/x-c++src;text/x-c++hdr;text/x-csharp;text/x-java;text/x-go;text/x-ruby;application/x-php;text/x-lua;text/x-perl;text/x-sql;application/x-shellscript;text/x-shellscript;text/html;text/css;text/javascript;application/javascript;application/x-desktop;text/x-diff;text/x-patch;

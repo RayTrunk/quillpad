@@ -26,6 +26,8 @@ AppUpdatesURL=https://github.com/RayTrunk/quillpad/releases
 VersionInfoVersion={#AppVersion}
 DefaultDirName={autopf}\Quillpad
 DisableProgramGroupPage=yes
+; Sprachauswahl nur zeigen, wenn Windows keine der drei Sprachen verwendet.
+ShowLanguageDialog=auto
 ; Standard: nur für den aktuellen Benutzer, ohne Administratorrechte. Im Dialog wählbar: alle Benutzer.
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
@@ -48,12 +50,47 @@ CloseApplications=yes
 RestartApplications=no
 
 [Languages]
+; Der Assistent folgt der Sprache von Windows; Englisch ist der Rückfall.
+Name: "en"; MessagesFile: "compiler:Default.isl"
 Name: "de"; MessagesFile: "compiler:Languages\German.isl"
+Name: "fr"; MessagesFile: "compiler:Languages\French.isl"
+
+[CustomMessages]
+en.Integration=Windows integration:
+de.Integration=Einbindung in Windows:
+fr.Integration=Intégration à Windows :
+en.OpenWith=Offer Quillpad under “Open with” for text files
+de.OpenWith=Unter „Öffnen mit“ für Textdateien anbieten
+fr.OpenWith=Proposer Quillpad dans « Ouvrir avec » pour les fichiers texte
+en.ContextMenu=Add “Edit with Quillpad” to the context menu of all files
+de.ContextMenu=Eintrag „Mit Quillpad bearbeiten“ im Kontextmenü aller Dateien
+fr.ContextMenu=Ajouter « Modifier avec Quillpad » au menu contextuel de tous les fichiers
+en.DefaultTxt=Make Quillpad the default for .txt (Windows will ask you to confirm)
+de.DefaultTxt=Quillpad als Standard für .txt wählen (Windows fragt danach selbst nach)
+fr.DefaultTxt=Définir Quillpad par défaut pour .txt (Windows vous demandera de confirmer)
+en.EditWith=Edit with Quillpad
+de.EditWith=Mit Quillpad bearbeiten
+fr.EditWith=Modifier avec Quillpad
+en.TextFile=Text file (Quillpad)
+de.TextFile=Textdatei (Quillpad)
+fr.TextFile=Fichier texte (Quillpad)
+en.AppDescription=Fast text editor with tabs, syntax colours and a search bar
+de.AppDescription=Schneller Texteditor mit Tabs, Syntaxfarben und Suchleiste
+fr.AppDescription=Éditeur de texte rapide avec onglets, coloration syntaxique et barre de recherche
+en.ShortcutComment=Fast text editor
+de.ShortcutComment=Schneller Texteditor
+fr.ShortcutComment=Éditeur de texte rapide
+en.OpenDefaultApps=Open Default apps to choose Quillpad for .txt
+de.OpenDefaultApps=Standard-Apps öffnen, um Quillpad für .txt zu wählen
+fr.OpenDefaultApps=Ouvrir les applications par défaut pour choisir Quillpad pour .txt
+en.DeleteSettings=Also delete Quillpad’s settings, session and backup copies?
+de.DeleteSettings=Sollen auch die Einstellungen, die Sitzung und die Sicherungskopien von Quillpad gelöscht werden?
+fr.DeleteSettings=Supprimer aussi les paramètres, la session et les copies de sauvegarde de Quillpad ?
 
 [Tasks]
-Name: "openwith"; Description: "Unter „Öffnen mit“ für Textdateien anbieten"; GroupDescription: "Einbindung in Windows:"
-Name: "contextmenu"; Description: "Eintrag „Mit Quillpad bearbeiten“ im Kontextmenü aller Dateien"; GroupDescription: "Einbindung in Windows:"
-Name: "defaulttxt"; Description: "Quillpad als Standard für .txt wählen (Windows fragt danach selbst nach)"; GroupDescription: "Einbindung in Windows:"; Flags: unchecked
+Name: "openwith"; Description: "{cm:OpenWith}"; GroupDescription: "{cm:Integration}"
+Name: "contextmenu"; Description: "{cm:ContextMenu}"; GroupDescription: "{cm:Integration}"
+Name: "defaulttxt"; Description: "{cm:DefaultTxt}"; GroupDescription: "{cm:Integration}"; Flags: unchecked
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
@@ -62,7 +99,7 @@ Source: "..\..\README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\..\LICENSE"; DestDir: "{app}"; DestName: "LICENSE.txt"; Flags: ignoreversion
 
 [Icons]
-Name: "{autoprograms}\Quillpad"; Filename: "{app}\quillpad.exe"; Comment: "Schneller Texteditor"
+Name: "{autoprograms}\Quillpad"; Filename: "{app}\quillpad.exe"; Comment: "{cm:ShortcutComment}"
 Name: "{autodesktop}\Quillpad"; Filename: "{app}\quillpad.exe"; Tasks: desktopicon
 
 [Registry]
@@ -71,17 +108,17 @@ Root: HKA; Subkey: "Software\Classes\Applications\quillpad.exe"; ValueType: stri
 Root: HKA; Subkey: "Software\Classes\Applications\quillpad.exe\DefaultIcon"; ValueType: string; ValueData: "{app}\quillpad.exe,0"
 Root: HKA; Subkey: "Software\Classes\Applications\quillpad.exe\shell\open\command"; ValueType: string; ValueData: """{app}\quillpad.exe"" ""%1"""
 ; Dateityp, unter dem Quillpad Textdateien öffnet
-Root: HKA; Subkey: "Software\Classes\Quillpad.Textdatei"; ValueType: string; ValueData: "Textdatei (Quillpad)"; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\Quillpad.Textdatei"; ValueType: string; ValueData: "{cm:TextFile}"; Flags: uninsdeletekey
 Root: HKA; Subkey: "Software\Classes\Quillpad.Textdatei\DefaultIcon"; ValueType: string; ValueData: "{app}\quillpad.exe,0"
 Root: HKA; Subkey: "Software\Classes\Quillpad.Textdatei\shell\open\command"; ValueType: string; ValueData: """{app}\quillpad.exe"" ""%1"""
 ; Fähigkeiten für die Einstellungen „Standard-Apps“
 Root: HKA; Subkey: "Software\Quillpad"; Flags: uninsdeletekeyifempty
 Root: HKA; Subkey: "Software\Quillpad\Capabilities"; ValueType: string; ValueName: "ApplicationName"; ValueData: "Quillpad"; Flags: uninsdeletekey
-Root: HKA; Subkey: "Software\Quillpad\Capabilities"; ValueType: string; ValueName: "ApplicationDescription"; ValueData: "Schneller Texteditor mit Tabs, Syntaxfarben und Suchleiste"
+Root: HKA; Subkey: "Software\Quillpad\Capabilities"; ValueType: string; ValueName: "ApplicationDescription"; ValueData: "{cm:AppDescription}"
 Root: HKA; Subkey: "Software\Quillpad\Capabilities"; ValueType: string; ValueName: "ApplicationIcon"; ValueData: "{app}\quillpad.exe,0"
 Root: HKA; Subkey: "Software\RegisteredApplications"; ValueType: string; ValueName: "Quillpad"; ValueData: "Software\Quillpad\Capabilities"; Flags: uninsdeletevalue
 ; Kontextmenü „Mit Quillpad bearbeiten“
-Root: HKA; Subkey: "Software\Classes\*\shell\Quillpad"; ValueType: string; ValueData: "Mit Quillpad bearbeiten"; Flags: uninsdeletekey; Tasks: contextmenu
+Root: HKA; Subkey: "Software\Classes\*\shell\Quillpad"; ValueType: string; ValueData: "{cm:EditWith}"; Flags: uninsdeletekey; Tasks: contextmenu
 Root: HKA; Subkey: "Software\Classes\*\shell\Quillpad"; ValueType: string; ValueName: "Icon"; ValueData: "{app}\quillpad.exe,0"; Tasks: contextmenu
 Root: HKA; Subkey: "Software\Classes\*\shell\Quillpad\command"; ValueType: string; ValueData: """{app}\quillpad.exe"" ""%1"""; Tasks: contextmenu
 ; Je Dateiendung: „Öffnen mit“ und Eintrag in den Fähigkeiten
@@ -94,8 +131,8 @@ Root: HKA; Subkey: "Software\Quillpad\Capabilities\FileAssociations"; ValueType:
 
 [Run]
 ; Windows erlaubt Programmen nicht, sich selbst zum Standard zu machen: die Einstellungen öffnen.
-Filename: "ms-settings:defaultapps?registeredAppUser=Quillpad"; Description: "Standard-Apps öffnen, um Quillpad für .txt zu wählen"; Flags: shellexec postinstall skipifsilent; Tasks: defaulttxt; Check: not IsAdminInstallMode
-Filename: "ms-settings:defaultapps?registeredAppMachine=Quillpad"; Description: "Standard-Apps öffnen, um Quillpad für .txt zu wählen"; Flags: shellexec postinstall skipifsilent; Tasks: defaulttxt; Check: IsAdminInstallMode
+Filename: "ms-settings:defaultapps?registeredAppUser=Quillpad"; Description: "{cm:OpenDefaultApps}"; Flags: shellexec postinstall skipifsilent; Tasks: defaulttxt; Check: not IsAdminInstallMode
+Filename: "ms-settings:defaultapps?registeredAppMachine=Quillpad"; Description: "{cm:OpenDefaultApps}"; Flags: shellexec postinstall skipifsilent; Tasks: defaulttxt; Check: IsAdminInstallMode
 Filename: "{app}\quillpad.exe"; Description: "{cm:LaunchProgram,Quillpad}"; Flags: nowait postinstall skipifsilent
 
 [Code]
@@ -108,7 +145,7 @@ begin
   begin
     Dir := ExpandConstant('{userappdata}\Quillpad');
     if DirExists(Dir) and not UninstallSilent then
-      if MsgBox('Sollen auch die Einstellungen, die Sitzung und die Sicherungskopien von Quillpad gelöscht werden?' + #13#10#13#10 + Dir,
+      if MsgBox(CustomMessage('DeleteSettings') + #13#10#13#10 + Dir,
                 mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES then
         DelTree(Dir, True, True, True);
   end;

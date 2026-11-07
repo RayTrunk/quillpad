@@ -15,3 +15,6 @@
 Thumbs.db
 .vscode/
 .idea/
+
+# Arbeitsordner von Claude Code (z. B. Arbeitskopien von Agenten)
+/.claude/
