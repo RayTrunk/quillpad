@@ -101,9 +101,10 @@ pub fn syntax(t: ThemeId) -> Syntax {
             fg: 0x1E1E1E, bg: 0xFFFFFF, comment: 0x6A7B7D, string: 0x1C7C54, number: 0xB35C00, keyword: 0x7A3FBF,
             typ: 0x1F6FB2, pre: 0x9C5D27, op: 0x4A4A4A, func: 0x2457A6, bad: 0xD12F2F, attr: 0xAD6A00, inserted: 0x2E7D32,
         },
+        // Nur Farben der klassischen 16-Farben-Palette: Navy, Teal, Maroon, Purple, Olive, Grün, Blau.
         ThemeId::Win98 => Syntax {
-            fg: 0x000000, bg: 0xFFFFFF, comment: 0x008000, string: 0x808080, number: 0xFF8000, keyword: 0x0000FF,
-            typ: 0x8000FF, pre: 0x804000, op: 0x000080, func: 0x000080, bad: 0xFF0000, attr: 0xFF0000, inserted: 0x008000,
+            fg: 0x000000, bg: 0xFFFFFF, comment: 0x008080, string: 0x800000, number: 0x800080, keyword: 0x000080,
+            typ: 0x008000, pre: 0x808000, op: 0x000000, func: 0x0000FF, bad: 0xFF0000, attr: 0x800080, inserted: 0x008000,
         },
         ThemeId::Dark => Syntax {
             fg: 0xDCDCDC, bg: 0x1F1F1F, comment: 0x8FBC6F, string: 0xD0A070, number: 0xE0A050, keyword: 0x7FB4F0,
@@ -186,8 +187,8 @@ pub fn palette(t: ThemeId) -> Palette {
         },
         ThemeId::Win98 => Palette {
             line_bg: rgb(0xFFFFE8), sel_bg: rgb(0xA6CAF0), gutter_bg: rgb(0xC0C0C0), gutter_fg: rgb(0x000000),
-            margin_bg: rgb(0xDFDFDF), symbol: rgb(0x808080), guide: rgb(0xC0C0C0), brace_bg: rgb(0xFFC0C0),
-            smart_bg: rgb(0xA8F0A8), mark_bg: rgb(0x80E0E0), bookmark: rgb(0x000080), fold: rgb(0x000000),
+            margin_bg: rgb(0xDFDFDF), symbol: rgb(0x808080), guide: rgb(0xC0C0C0), brace_bg: rgb(0xFFFF99),
+            smart_bg: rgb(0xCCFFCC), mark_bg: rgb(0xC0FFFF), bookmark: rgb(0x000080), fold: rgb(0x000000),
             scroll_bg: rgb(0xDFDFDF), scroll_fg: rgb(0xC0C0C0), scroll_bevel: true, ..base
         },
     }
