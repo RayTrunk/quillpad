@@ -5,10 +5,11 @@ Quillpad unter Linux (64 Bit)
 3. Starten:  ./quillpad-linux  (oder mit Datei:  ./quillpad-linux meine-datei.txt)
 
 Gebraucht werden die Grafikbibliotheken, die jeder Linux-Desktop mitbringt
-(libGL/libEGL und libxkbcommon). Fehlen sie, unter Debian/Ubuntu:
-  sudo apt install libgl1 libegl1 libxkbcommon0 libxkbcommon-x11-0 libxcursor1 libxi6
+(libGL/libEGL, libxkbcommon, unter Wayland libwayland). Fehlen sie, unter Debian/Ubuntu:
+  sudo apt install libgl1 libegl1 libxkbcommon0 libxkbcommon-x11-0 libxcursor1 libxi6 libwayland-client0 libwayland-egl1
 
 Für die Dialoge "Öffnen" und "Speichern" braucht es xdg-desktop-portal oder zenity.
 
-Auf sehr alten Systemen startet die fertige Datei eventuell nicht.
-Dann im Ordner app selbst bauen (dazu Rust von rustup.rs installieren):  cargo build --release
+Die fertige Datei braucht glibc 2.39 oder neuer, also zum Beispiel
+Ubuntu 24.04, Debian 13, Fedora 40 oder neuer. Auf älteren Systemen
+im Ordner app selbst bauen (dazu Rust von rustup.rs installieren):  cargo build --release
