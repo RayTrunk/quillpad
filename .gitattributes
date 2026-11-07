@@ -1,0 +1,3 @@
+# Quelltext immer mit LF, unabhängig von core.autocrlf
+* text=auto eol=lf
+*.png binary
