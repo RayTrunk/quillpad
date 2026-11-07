@@ -9,8 +9,8 @@ fn main() {
     res.set_icon("assets/quillpad.ico");
     res.set("ProductName", "Quillpad");
     res.set("FileDescription", "Quillpad Texteditor");
-    res.set("CompanyName", "RayTrunk");
-    res.set("LegalCopyright", "RayTrunk");
+    res.set("CompanyName", "R. Trunk");
+    res.set("LegalCopyright", "© 2026 R. Trunk – GNU GPL v3 oder neuer");
     if let Err(e) = res.compile() {
         // Ohne Ressourcen-Compiler läuft das Programm trotzdem, nur ohne Symbol in der exe.
         println!("cargo:warning=Programmsymbol nicht eingebettet: {e}");

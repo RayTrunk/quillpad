@@ -18,7 +18,8 @@ AppId={{7C3E5A12-4B8D-4F2A-9E61-2D5C8B7A9F30}
 AppName=Quillpad
 AppVersion={#AppVersion}
 AppVerName=Quillpad {#AppVersion}
-AppPublisher=RayTrunk
+AppPublisher=R. Trunk
+AppCopyright=© 2026 R. Trunk
 AppPublisherURL=https://github.com/RayTrunk/quillpad
 AppSupportURL=https://github.com/RayTrunk/quillpad/issues
 AppUpdatesURL=https://github.com/RayTrunk/quillpad/releases
@@ -34,6 +35,8 @@ MinVersion=10.0
 OutputDir=..\..\target\installer
 OutputBaseFilename=quillpad-{#AppVersion}-windows-x64-setup
 SetupIconFile=..\..\assets\quillpad.ico
+; Lizenz wird im Assistenten angezeigt (GNU GPL v3).
+LicenseFile=..\..\LICENSE
 UninstallDisplayIcon={app}\quillpad.exe
 UninstallDisplayName=Quillpad
 WizardStyle=modern
@@ -56,6 +59,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 [Files]
 Source: "{#AppExe}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\..\README.md"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\..\LICENSE"; DestDir: "{app}"; DestName: "LICENSE.txt"; Flags: ignoreversion
 
 [Icons]
 Name: "{autoprograms}\Quillpad"; Filename: "{app}\quillpad.exe"; Comment: "Schneller Texteditor"

@@ -36,3 +36,11 @@ cargo build --release
 ```
 
 Das Programm liegt danach in `target/release/`. Tests laufen mit `cargo test`.
+
+## Lizenz
+
+© 2026 R. Trunk
+
+Quillpad ist freie Software: Du kannst es unter den Bedingungen der
+[GNU General Public License](LICENSE), Version 3 oder (nach deiner Wahl) jeder späteren Version,
+weitergeben und verändern. Quillpad wird ohne jede Gewährleistung verbreitet.

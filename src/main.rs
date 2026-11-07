@@ -1,5 +1,6 @@
 // Auch im Entwicklungsbau als Fensterprogramm: kein Konsolenfenster vor dem Editor.
 #![cfg_attr(not(test), windows_subsystem = "windows")]
+// Quillpad – © 2026 R. Trunk – GNU GPL v3 oder neuer (siehe LICENSE)
 
 mod app;
 mod commands;

@@ -2,6 +2,10 @@
 name = "quillpad"
 version = "0.9.1"
 edition = "2021"
+authors = ["R. Trunk"]
+description = "Schneller Texteditor mit Tabs, Syntaxfarben und Suchleiste"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/RayTrunk/quillpad"
 
 [dependencies]
 eframe = "0.31"

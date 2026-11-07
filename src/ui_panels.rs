@@ -541,7 +541,20 @@ impl App {
                     ui.heading(APP_NAME);
                     ui.label("Ein schneller Texteditor mit Tabs, farbigem Code und mächtiger Suche.");
                     ui.label(format!("Version {}", env!("CARGO_PKG_VERSION")));
-                    ui.hyperlink_to("Quillpad auf GitHub", crate::update::REPO_URL);
+                    ui.label("© 2026 R. Trunk");
+                    ui.add_space(4.0);
+                    ui.label(
+                        RichText::new(
+                            "Freie Software unter der GNU General Public License, Version 3 oder neuer. \
+                             Ohne jede Gewährleistung.",
+                        )
+                        .small(),
+                    );
+                    ui.horizontal(|ui| {
+                        ui.hyperlink_to("Quillpad auf GitHub", crate::update::REPO_URL);
+                        ui.label("·");
+                        ui.hyperlink_to("Lizenztext", "https://www.gnu.org/licenses/gpl-3.0.html");
+                    });
                     ui.add_space(8.0);
                     if ui.button("OK").clicked() || esc {
                         keep = false;
