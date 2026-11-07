@@ -12,10 +12,20 @@ Ein schneller Texteditor für Windows und Linux, geschrieben in Rust mit [egui](
 - Neun Farbdesigns, darunter Solarized, Nord, Monokai, Sepia, Hoher Kontrast und ein Windows-98-Look
 - Hinweis auf neue Versionen (abschaltbar)
 
-## Herunterladen
+## Herunterladen und installieren
 
-Fertige Programme für Windows und Linux gibt es unter [Releases](https://github.com/RayTrunk/quillpad/releases).
-Unter Linux bitte `LIESMICH-LINUX.txt` beachten.
+Fertige Programme gibt es unter [Releases](https://github.com/RayTrunk/quillpad/releases).
+
+- **Windows:** `quillpad-<version>-windows-x64-setup.exe` installiert Quillpad ohne Administratorrechte
+  (wahlweise für alle Benutzer) mit Startmenü-Eintrag, „Öffnen mit“ für Textdateien und auf Wunsch dem
+  Kontextmenü „Mit Quillpad bearbeiten“. Wer nichts installieren will, nimmt die einzelne `.exe`.
+- **Linux:** `quillpad-<version>-linux-x64.tar.gz` entpacken und `./install.sh` ausführen; Quillpad
+  erscheint dann im Anwendungsmenü und unter „Öffnen mit“. Details in `LIESMICH-LINUX.txt`.
+
+Die Programme sind nicht signiert; Windows SmartScreen fragt deshalb beim ersten Start nach.
+
+Den Installer selbst bauen: `cargo build --release`, dann mit [Inno Setup](https://jrsoftware.org/isinfo.php)
+`ISCC packaging\windows\quillpad.iss`.
 
 ## Selbst bauen
 

@@ -1,8 +1,13 @@
 Quillpad unter Linux (64 Bit)
 
-1. Die Datei quillpad-linux in einen beliebigen Ordner kopieren.
-2. Einmal ausführbar machen:  chmod +x quillpad-linux
-3. Starten:  ./quillpad-linux  (oder mit Datei:  ./quillpad-linux meine-datei.txt)
+Installieren (für den eigenen Benutzer, ohne Root-Rechte):
+1. Das Archiv entpacken:  tar xzf quillpad-<version>-linux-x64.tar.gz
+2. Im entpackten Ordner:  ./install.sh
+   Quillpad steht danach im Anwendungsmenü und unter „Öffnen mit“ für Textdateien.
+   Das Programm liegt in ~/.local/bin/quillpad.
+Entfernen:  ./install.sh --uninstall  (die Einstellungen in ~/.config/Quillpad bleiben)
+
+Ohne Installation geht es auch:  ./quillpad-linux  (oder  ./quillpad-linux meine-datei.txt)
 
 Gebraucht werden die Grafikbibliotheken, die jeder Linux-Desktop mitbringt
 (libGL/libEGL, libxkbcommon, unter Wayland libwayland). Fehlen sie, unter Debian/Ubuntu:
