@@ -1398,7 +1398,6 @@ impl App {
         self.handle_window_events(ctx);
         self.handle_shortcuts(ctx);
         self.draw_main(ctx);
-        self.draw_find(ctx);
         self.draw_dialogs(ctx);
         self.poll_find_job(ctx);
         self.run_pending(ctx);

@@ -218,13 +218,13 @@ pub fn shortcuts() -> Vec<Shortcut> {
         sc!("Strg+F", "Suchen", true, false, false, F, false, A::ShowFind(FindTab::Find)),
         sc!("Strg+H", "Ersetzen", true, false, false, H, false, A::ShowFind(FindTab::Replace)),
         sc!("Strg+Umschalt+F", "In Dateien suchen", true, true, false, F, false, A::ShowFind(FindTab::Files)),
-        sc!("Strg+M", "Markieren", true, false, false, M, false, A::ShowFind(FindTab::Mark)),
+        sc!("Strg+M", "Treffer hervorheben", true, false, false, M, false, A::ShowFind(FindTab::Mark)),
         sc!("F3", "Weitersuchen", false, false, false, F3, false, A::FindNext),
         sc!("Umschalt+F3", "Rückwärts suchen", false, true, false, F3, false, A::FindPrev),
-        sc!("Strg+F3", "Markierung weitersuchen", true, false, false, F3, false, A::FindSelectedNext),
+        sc!("Strg+F3", "Markierten Text suchen", true, false, false, F3, false, A::FindSelectedNext),
         sc!("Strg+G", "Gehe zu", true, false, false, G, false, A::GoToDialog),
-        sc!("Strg+B", "Passende Klammer", true, false, false, B, true, A::MatchBrace),
-        sc!("Strg+F2", "Lesezeichen umschalten", true, false, false, F2, false, A::BookmarkToggle),
+        sc!("Strg+B", "Zur passenden Klammer", true, false, false, B, true, A::MatchBrace),
+        sc!("Strg+F2", "Lesezeichen setzen/entfernen", true, false, false, F2, false, A::BookmarkToggle),
         sc!("F2", "Nächstes Lesezeichen", false, false, false, F2, false, A::BookmarkNext),
         sc!("Umschalt+F2", "Vorheriges Lesezeichen", false, true, false, F2, false, A::BookmarkPrev),
         sc!("F11", "Vollbild", false, false, false, F11, false, A::ToggleFullscreen),
@@ -383,6 +383,8 @@ impl App {
             .frame(egui::Frame::NONE.fill(c.window))
             .show_separator_line(false)
             .show(ctx, |ui| self.status_bar(ui));
+        // Suchleiste und Dateisuche liegen als Leisten am Rand, darum vor dem Schreibfeld.
+        self.draw_find(ctx);
         self.results_panel(ctx);
         self.side_panels(ctx);
         egui::CentralPanel::default()

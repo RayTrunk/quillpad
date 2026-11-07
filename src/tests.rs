@@ -867,7 +867,7 @@ fn file_search_sees_unsaved_text_and_honours_exclusions() {
     assert_eq!(names.len(), 2, "{names:?}");
     assert!(names.iter().any(|n| n.ends_with("offen.txt")), "ungespeicherter Text zählt");
     assert!(names.iter().any(|n| n.ends_with("roh.bin")), "beim Suchen werden Binärdateien nicht ausgelassen");
-    assert!(!r.app.find.open, "mit Treffern schließt sich das Suchfenster");
+    assert!(r.app.find.open, "die Seitenleiste bleibt für weitere Suchen offen");
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
@@ -956,4 +956,31 @@ fn every_theme_switches_and_draws() {
     r.act(Action::SetTheme(ThemeId::Light));
     r.frames(2);
     assert_eq!(r.text(), "fn main() {\n    let a = 1; // Kommentar\n}\n", "Designwechsel lässt den Text in Ruhe");
+}
+
+#[test]
+fn find_bar_counts_live_and_shows_the_position() {
+    let mut r = Rig::new();
+    r.set_text("eins zwei Eins drei eins");
+    r.act(Action::ShowFind(FindTab::Find));
+    r.app.find.what = "eins".into();
+    r.app.find.case = false;
+    r.app.find.mode = crate::search::Mode::Normal;
+    r.frames(2);
+    assert_eq!(r.app.live_count().map(|x| x.map(|(_, n)| n)), Some(Ok(3)), "ohne Groß/Klein drei Treffer");
+    assert!(r.app.find_step(false));
+    let first = match r.app.live_count() {
+        Some(Ok((Some(i), 3))) => i,
+        other => panic!("Position erwartet: {other:?}"),
+    };
+    assert!(r.app.find_step(false));
+    assert_eq!(r.app.live_count(), Some(Ok((Some(first % 3 + 1), 3))), "springt zum nächsten Treffer");
+    r.app.find.case = true;
+    assert_eq!(r.app.live_count().map(|x| x.map(|(_, n)| n)), Some(Ok(2)), "mit Groß/Klein nur zwei");
+    r.app.find.mode = crate::search::Mode::Regex;
+    r.app.find.what = "(".into();
+    assert!(matches!(r.app.live_count(), Some(Err(_))), "ungültiger Ausdruck wird gemeldet");
+    r.app.find.what.clear();
+    assert_eq!(r.app.live_count(), None);
+    r.frames(2);
 }

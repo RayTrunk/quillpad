@@ -1,11 +1,13 @@
-//! Suchen und Ersetzen: Fenster, Schritte im Dokument und die Suche über Dateien.
+//! Suchen und Ersetzen: Suchleiste, Schritte im Dokument und die Suche über Dateien.
 use crate::app::{App, Dialog};
 use crate::doc::{DocId, Document, Kind, SelSet};
 use crate::fileio::{self, Eol};
 use crate::search::{self, Mode, Query};
 use crate::settings::Settings;
 use crate::ui_panels::Hit;
-use egui::{Context, RichText};
+use crate::icons;
+use crate::ui_chrome::chrome;
+use egui::{vec2, Context, RichText, TextEdit, Ui};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -46,6 +48,15 @@ pub struct FindUi {
     pub message: String,
     pub message_err: bool,
     pub focus_what: bool,
+    /// Zwischengespeicherte Treffer für den Zähler in der Suchleiste.
+    pub live: Option<LiveCount>,
+}
+
+/// Treffer im aktuellen Tab, gültig für genau diesen Suchbegriff, diese Optionen und diesen Textstand.
+pub struct LiveCount {
+    key: (String, Mode, bool, bool, bool, DocId, u64),
+    matches: Vec<(usize, usize)>,
+    error: Option<String>,
 }
 
 impl FindUi {
@@ -72,6 +83,7 @@ impl FindUi {
             message: String::new(),
             message_err: false,
             focus_what: false,
+            live: None,
         }
     }
 
@@ -601,10 +613,6 @@ impl App {
         match finished {
             Some((files, skipped)) => {
                 self.results.finish(job.hits, job.files_hit);
-                // Mit Treffern schließt sich das Suchfenster und gibt den Blick auf die Liste frei.
-                if job.hits > 0 && job.failed == 0 && !job.replacing {
-                    self.find.open = false;
-                }
                 let mut msg = if job.replacing {
                     format!("{} Treffer in {} von {files} Dateien ersetzt.", job.replaced, job.files_hit)
                 } else {
@@ -623,232 +631,385 @@ impl App {
         }
     }
 
+    /// Treffer im aktuellen Tab für die Anzeige „3 von 12“. Gezählt wird nur neu, wenn sich
+    /// Suchbegriff, Optionen oder Text ändern; sehr große Dokumente werden nicht live gezählt.
+    pub(crate) fn live_count(&mut self) -> Option<Result<(Option<usize>, usize), String>> {
+        if self.find.what.is_empty() {
+            return None;
+        }
+        let id = self.cur_id();
+        let (rev, len) = {
+            let d = self.cur_doc();
+            (d.rev, d.len())
+        };
+        if len > LIVE_COUNT_MAX_CHARS {
+            return None;
+        }
+        let f = &self.find;
+        let key = (f.what.clone(), f.mode, f.case, f.whole, f.dot_nl, id, rev);
+        if self.find.live.as_ref().map(|l| &l.key) != Some(&key) {
+            let (matches, error) = match self.find.query().compile() {
+                Ok(re) => (search::find_all(&re, &self.cur_doc().full_text()), None),
+                Err(e) => (Vec::new(), Some(e)),
+            };
+            self.find.live = Some(LiveCount { key, matches, error });
+        }
+        let live = self.find.live.as_ref()?;
+        if let Some(e) = &live.error {
+            return Some(Err(e.clone()));
+        }
+        let main = self.cur_view().sels.main();
+        let d = self.cur_doc();
+        let sel = (d.text.char_to_byte(main.start()), d.text.char_to_byte(main.end()));
+        let cur = live.matches.iter().position(|m| *m == sel).map(|i| i + 1);
+        Some(Ok((cur, live.matches.len())))
+    }
+
+    /// Suchleiste oder Seitenleiste „In Dateien suchen“. Muss vor dem Schreibfeld gezeichnet werden.
     pub fn draw_find(&mut self, ctx: &Context) {
         if !self.find.open {
             return;
         }
-        let mut open = true;
-        let mut do_next = false;
-        let mut do_prev = false;
-        let mut do_count = false;
-        let mut do_all_cur = false;
-        let mut do_all_open = false;
-        let mut do_replace = false;
-        let mut do_replace_all = false;
-        let mut do_replace_open = false;
-        let mut do_files = false;
-        let mut do_files_replace = false;
-        let mut do_mark = false;
-        let mut do_clear_marks = false;
-        let mut do_pick_dir = false;
-        let mut do_cancel = false;
-        let job_running = self.find_job.is_some();
-        egui::Window::new(crate::theme::window_title(self.settings.theme, "Suchen"))
-            .id(egui::Id::new("find-window"))
-            .open(&mut open)
-            .collapsible(false)
-            .resizable(false)
-            .default_width(560.0)
-            .default_pos(egui::pos2(220.0, 150.0))
-            .show(ctx, |ui| {
-                let f = &mut self.find;
-                ui.horizontal(|ui| {
-                    for (tab, label) in [
-                        (FindTab::Find, "Suchen"),
-                        (FindTab::Replace, "Ersetzen"),
-                        (FindTab::Files, "In Dateien suchen"),
-                        (FindTab::Mark, "Markieren"),
-                    ] {
-                        ui.selectable_value(&mut f.tab, tab, label);
-                    }
-                });
-                ui.separator();
-                ui.columns(2, |cols| {
-                    let ui = &mut cols[0];
-                    ui.set_min_width(330.0);
-                    egui::Grid::new("find-fields").num_columns(2).spacing([8.0, 6.0]).show(ui, |ui| {
-                        ui.label("Suchen nach:");
-                        let r = ui.add(egui::TextEdit::singleline(&mut f.what).desired_width(220.0).id(egui::Id::new("find-what")));
-                        if f.focus_what {
-                            f.focus_what = false;
-                            r.request_focus();
-                        }
-                        if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                            match f.tab {
-                                FindTab::Find | FindTab::Replace => do_next = true,
-                                FindTab::Files => do_files = true,
-                                FindTab::Mark => do_mark = true,
-                            }
-                            r.request_focus();
-                        }
-                        ui.end_row();
-                        if !f.history.is_empty() {
-                            ui.label("");
-                            let mut picked = None;
-                            egui::ComboBox::from_id_salt("find-history")
-                                .selected_text("Letzte Suchen")
-                                .width(220.0)
-                                .show_ui(ui, |ui| {
-                                    for h in &f.history {
-                                        let shown: String = h.chars().take(40).collect();
-                                        if ui.selectable_label(false, shown).clicked() {
-                                            picked = Some(h.clone());
-                                        }
-                                    }
-                                });
-                            if let Some(h) = picked {
-                                f.what = h;
-                            }
-                            ui.end_row();
-                        }
-                        if matches!(f.tab, FindTab::Replace | FindTab::Files) {
-                            ui.label("Ersetzen durch:");
-                            ui.add(egui::TextEdit::singleline(&mut f.with).desired_width(220.0));
-                            ui.end_row();
-                        }
-                        if f.tab == FindTab::Files {
-                            ui.label("Filter:");
-                            ui.add(egui::TextEdit::singleline(&mut f.filters).desired_width(220.0).hint_text("*.txt;*.rs"));
-                            ui.end_row();
-                            ui.label("Ordner:");
-                            ui.horizontal(|ui| {
-                                ui.add(egui::TextEdit::singleline(&mut f.dir).desired_width(186.0));
-                                if ui.button("…").on_hover_text("Ordner wählen").clicked() {
-                                    do_pick_dir = true;
-                                }
-                            });
-                            ui.end_row();
-                        }
-                    });
-                    ui.add_space(4.0);
-                    ui.checkbox(&mut f.whole, "Nur ganze Wörter");
-                    ui.checkbox(&mut f.case, "Groß-/Kleinschreibung beachten");
-                    if f.tab == FindTab::Files {
-                        ui.checkbox(&mut f.subfolders, "Unterordner einbeziehen");
-                        ui.checkbox(&mut f.hidden, "Versteckte Ordner einbeziehen");
-                    } else {
-                        ui.checkbox(&mut f.wrap, "Am Ende von vorn beginnen");
-                    }
-                    if f.tab == FindTab::Replace {
-                        ui.checkbox(&mut f.in_selection, "Nur in der Markierung");
-                    }
-                    if f.tab == FindTab::Mark {
-                        ui.checkbox(&mut f.bookmark_lines, "Zeile mit Lesezeichen versehen");
-                        ui.checkbox(&mut f.purge, "Vorherige Markierungen entfernen");
-                    }
-                    ui.add_space(4.0);
-                    ui.label(RichText::new("Suchmodus").strong());
-                    ui.radio_value(&mut f.mode, Mode::Normal, "Normal");
-                    ui.radio_value(&mut f.mode, Mode::Extended, "Erweitert (\\n, \\t, \\0, \\x…)");
-                    ui.horizontal(|ui| {
-                        ui.radio_value(&mut f.mode, Mode::Regex, "Regulärer Ausdruck");
-                        ui.add_enabled(f.mode == Mode::Regex, egui::Checkbox::new(&mut f.dot_nl, ". findet \\n"));
-                    });
-                    if matches!(f.tab, FindTab::Find | FindTab::Replace) {
-                        ui.horizontal(|ui| {
-                            ui.label("Richtung:");
-                            ui.radio_value(&mut f.up, true, "Aufwärts");
-                            ui.radio_value(&mut f.up, false, "Abwärts");
-                        });
-                    }
-                    let ui = &mut cols[1];
-                    let wide = |ui: &mut egui::Ui, text: &str| ui.add_sized([ui.available_width(), 24.0], egui::Button::new(text)).clicked();
-                    match f.tab {
-                        FindTab::Find => {
-                            do_next |= wide(ui, "Weitersuchen");
-                            do_prev |= wide(ui, "Rückwärts suchen");
-                            do_count |= wide(ui, "Zählen");
-                            do_all_cur |= wide(ui, "Alle im aktuellen Dokument");
-                            do_all_open |= wide(ui, "In allen Tabs");
-                        }
-                        FindTab::Replace => {
-                            do_next |= wide(ui, "Weitersuchen");
-                            do_replace |= wide(ui, "Ersetzen");
-                            do_replace_all |= wide(ui, "Alle ersetzen");
-                            do_replace_open |= wide(ui, "In allen Tabs ersetzen");
-                        }
-                        FindTab::Files => {
-                            do_files |= wide(ui, "Alle suchen");
-                            do_files_replace |= wide(ui, "In Dateien ersetzen");
-                            if job_running {
-                                do_cancel |= wide(ui, "Abbrechen");
-                            }
-                        }
-                        FindTab::Mark => {
-                            do_mark |= wide(ui, "Alle markieren");
-                            do_clear_marks |= wide(ui, "Markierungen entfernen");
-                            do_next |= wide(ui, "Weitersuchen");
-                        }
-                    }
-                });
-                if !f.message.is_empty() {
-                    ui.separator();
-                    let color = if f.message_err { egui::Color32::from_rgb(0xC0, 0x30, 0x30) } else { ui.visuals().text_color() };
-                    ui.colored_label(color, &f.message);
-                }
-            });
+        let acts = if self.find.tab == FindTab::Files { self.files_panel(ctx) } else { self.find_bar(ctx) };
         if ctx.input(|i| i.key_pressed(egui::Key::Escape)) && !self.editor_focused {
-            open = false;
-        }
-        if !open {
             self.find.open = false;
             self.focus_editor();
         }
-        if do_next {
-            self.find_step(false);
-        }
-        if do_prev {
-            self.find_step(true);
-        }
-        if do_count {
-            self.count_matches();
-        }
-        if do_all_cur {
-            self.find_all_docs(true);
-        }
-        if do_all_open {
-            self.find_all_docs(false);
-        }
-        if do_replace {
-            self.replace_one();
-        }
-        if do_replace_all {
-            self.replace_all_current();
-        }
-        if do_replace_open {
-            self.dialog = Some(Dialog::ConfirmReplaceOpen);
-        }
-        if do_files {
-            self.start_file_job(None);
-        }
-        if do_files_replace {
-            // Schreibt in Dateien auf der Festplatte: vorher nachfragen.
-            if self.find.query().compile().is_ok() {
-                let hint = format!(
-                    "Alle Treffer von „{}“ durch „{}“ ersetzen, in allen passenden Dateien in\n{}?\nDas lässt sich nicht rückgängig machen.",
-                    self.find.what, self.find.with, self.find.dir
-                );
-                self.dialog = Some(Dialog::ConfirmReplaceFiles { count_hint: hint });
-            } else {
-                self.start_file_job(None);
+        for a in acts {
+            match a {
+                FindAct::Next => {
+                    self.find_step(false);
+                }
+                FindAct::Prev => {
+                    self.find_step(true);
+                }
+                FindAct::Count => {
+                    self.count_matches();
+                }
+                FindAct::Replace => self.replace_one(),
+                FindAct::ReplaceAll => self.replace_all_current(),
+                FindAct::ReplaceOpen => self.dialog = Some(Dialog::ConfirmReplaceOpen),
+                FindAct::ListCurrent => self.find_all_docs(true),
+                FindAct::ListOpen => self.find_all_docs(false),
+                FindAct::MarkAll => {
+                    self.mark_all();
+                }
+                FindAct::ClearMarks => self.cur_doc_mut().marks.clear(),
+                FindAct::ShowFiles => self.show_find(FindTab::Files),
+                FindAct::FilesFind => self.start_file_job(None),
+                FindAct::FilesReplace => {
+                    // Schreibt in Dateien auf der Festplatte: vorher nachfragen.
+                    if self.find.query().compile().is_ok() {
+                        let hint = format!(
+                            "Alle Treffer von „{}“ durch „{}“ ersetzen, in allen passenden Dateien in\n{}?\nDas lässt sich nicht rückgängig machen.",
+                            self.find.what, self.find.with, self.find.dir
+                        );
+                        self.dialog = Some(Dialog::ConfirmReplaceFiles { count_hint: hint });
+                    } else {
+                        self.start_file_job(None);
+                    }
+                }
+                FindAct::PickDir => {
+                    if let Some(dir) = rfd::FileDialog::new().pick_folder() {
+                        self.find.dir = dir.display().to_string();
+                    }
+                }
+                FindAct::Cancel => {
+                    if let Some(job) = &self.find_job {
+                        job.cancel.store(true, Ordering::Relaxed);
+                    }
+                }
+                FindAct::Close => {
+                    self.find.open = false;
+                    self.focus_editor();
+                }
             }
         }
-        if do_mark {
-            self.mark_all();
-        }
-        if do_clear_marks {
-            self.cur_doc_mut().marks.clear();
-        }
-        if do_pick_dir {
-            if let Some(dir) = rfd::FileDialog::new().pick_folder() {
-                self.find.dir = dir.display().to_string();
-            }
-        }
-        if do_cancel {
-            if let Some(job) = &self.find_job {
-                job.cancel.store(true, Ordering::Relaxed);
-            }
-        }
+    }
+
+    /// Schmale Leiste über dem Schreibfeld: Suchfeld mit Schaltern, Zähler, Pfeile, Optionen.
+    /// Darunter je nach Modus eine Zeile zum Ersetzen oder zum Hervorheben.
+    fn find_bar(&mut self, ctx: &Context) -> Vec<FindAct> {
+        let c = chrome(self.settings.theme);
+        let live = self.live_count();
+        let mut act = Vec::new();
+        egui::TopBottomPanel::top("findbar")
+            .frame(egui::Frame::NONE.fill(c.window).inner_margin(egui::Margin { left: 6, right: 8, top: 4, bottom: 4 }))
+            .show(ctx, |ui| {
+                let f = &mut self.find;
+                ui.spacing_mut().item_spacing = vec2(4.0, 4.0);
+                let field_w = 280.0;
+                ui.horizontal(|ui| {
+                    let (glyph, fallback, tip) = if f.tab == FindTab::Find {
+                        (icons::GLYPH_CHEVRON_RIGHT, "▶", "Ersetzen einblenden")
+                    } else {
+                        (icons::GLYPH_CHEVRON_DOWN, "▼", "Ersetzen ausblenden")
+                    };
+                    if icon_button(ui, glyph, fallback, tip) {
+                        f.tab = if f.tab == FindTab::Find { FindTab::Replace } else { FindTab::Find };
+                    }
+                    let r = ui.add(TextEdit::singleline(&mut f.what).desired_width(field_w).hint_text("Suchen").id(egui::Id::new("find-what")));
+                    if f.focus_what {
+                        f.focus_what = false;
+                        r.request_focus();
+                    }
+                    if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                        act.push(if ui.input(|i| i.modifiers.shift) { FindAct::Prev } else { FindAct::Next });
+                        r.request_focus();
+                    }
+                    option_toggles(ui, f);
+                    let (text, err) = match &live {
+                        None => (String::new(), false),
+                        Some(Ok((Some(i), n))) => (format!("{i} von {n}"), false),
+                        Some(Ok((None, 0))) => ("Keine Treffer".to_string(), true),
+                        Some(Ok((None, n))) => (format!("{n} Treffer"), false),
+                        Some(Err(_)) => ("Ungültiger Ausdruck".to_string(), true),
+                    };
+                    let color = if err { ERROR_RED } else { c.text_dim };
+                    let r = ui.add_sized([110.0, 20.0], egui::Label::new(RichText::new(text).color(color)));
+                    if let Some(Err(e)) = &live {
+                        r.on_hover_text(e);
+                    }
+                    if icon_button(ui, GLYPH_ARROW_UP, "↑", "Vorheriger Treffer (Umschalt+Enter)") {
+                        act.push(FindAct::Prev);
+                    }
+                    if icon_button(ui, GLYPH_ARROW_DOWN, "↓", "Nächster Treffer (Enter)") {
+                        act.push(FindAct::Next);
+                    }
+                    ui.menu_button(icons::rich(GLYPH_MORE, "⋯", 14.0), |ui| {
+                        ui.set_min_width(260.0);
+                        ui.checkbox(&mut f.wrap, "Am Ende von vorn beginnen");
+                        ui.checkbox(&mut f.in_selection, "Nur in der Markierung");
+                        ui.add_enabled(f.mode == Mode::Regex, egui::Checkbox::new(&mut f.dot_nl, "Punkt findet auch Zeilenumbrüche"));
+                        ui.separator();
+                        if ui.button("Treffer zählen").on_hover_text("Auch in sehr großen Dokumenten, die nicht live gezählt werden").clicked() {
+                            act.push(FindAct::Count);
+                            ui.close_menu();
+                        }
+                        if ui.button("Alle Treffer im Tab auflisten").clicked() {
+                            act.push(FindAct::ListCurrent);
+                            ui.close_menu();
+                        }
+                        if ui.button("Alle Treffer in allen Tabs auflisten").clicked() {
+                            act.push(FindAct::ListOpen);
+                            ui.close_menu();
+                        }
+                        if ui.button("Treffer hervorheben …").clicked() {
+                            f.tab = FindTab::Mark;
+                            ui.close_menu();
+                        }
+                        if ui.button("In Dateien suchen …").clicked() {
+                            act.push(FindAct::ShowFiles);
+                            ui.close_menu();
+                        }
+                        if !f.history.is_empty() {
+                            ui.separator();
+                            ui.menu_button("Letzte Suchen", |ui| {
+                                ui.set_min_width(200.0);
+                                let mut picked = None;
+                                for h in &f.history {
+                                    let shown: String = h.chars().take(40).collect();
+                                    if ui.button(shown).clicked() {
+                                        picked = Some(h.clone());
+                                        ui.close_menu();
+                                    }
+                                }
+                                if let Some(h) = picked {
+                                    f.what = h;
+                                    f.focus_what = true;
+                                }
+                            });
+                        }
+                    })
+                    .response
+                    .on_hover_text("Weitere Optionen");
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if icon_button(ui, icons::GLYPH_CLOSE, "✕", "Schließen (Esc)") {
+                            act.push(FindAct::Close);
+                        }
+                        if !f.message.is_empty() {
+                            let color = if f.message_err { ERROR_RED } else { c.text };
+                            ui.add(egui::Label::new(RichText::new(&f.message).color(color)).truncate());
+                        }
+                    });
+                });
+                // Zweite Zeile, eingerückt unter das Suchfeld.
+                let indent = 28.0;
+                match f.tab {
+                    FindTab::Replace => {
+                        ui.horizontal(|ui| {
+                            ui.add_space(indent);
+                            let r = ui.add(TextEdit::singleline(&mut f.with).desired_width(field_w).hint_text("Ersetzen durch"));
+                            if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                                act.push(FindAct::Replace);
+                                r.request_focus();
+                            }
+                            if ui.button("Ersetzen").on_hover_text("Diesen Treffer ersetzen und zum nächsten").clicked() {
+                                act.push(FindAct::Replace);
+                            }
+                            if ui.button("Alle ersetzen").clicked() {
+                                act.push(FindAct::ReplaceAll);
+                            }
+                            if ui.button("In allen Tabs").on_hover_text("In allen offenen Tabs ersetzen").clicked() {
+                                act.push(FindAct::ReplaceOpen);
+                            }
+                            ui.checkbox(&mut f.in_selection, "Nur in der Markierung");
+                        });
+                    }
+                    FindTab::Mark => {
+                        ui.horizontal(|ui| {
+                            ui.add_space(indent);
+                            if ui.button("Alle hervorheben").clicked() {
+                                act.push(FindAct::MarkAll);
+                            }
+                            ui.checkbox(&mut f.bookmark_lines, "Zeilen mit Lesezeichen versehen");
+                            ui.checkbox(&mut f.purge, "Vorherige Hervorhebungen entfernen");
+                            if ui.button("Hervorhebungen entfernen").clicked() {
+                                act.push(FindAct::ClearMarks);
+                            }
+                        });
+                    }
+                    _ => {}
+                }
+            });
+        act
+    }
+
+    /// Seitenleiste für die Suche über einen Ordner; die Treffer erscheinen in der Ergebnisliste unten.
+    fn files_panel(&mut self, ctx: &Context) -> Vec<FindAct> {
+        let c = chrome(self.settings.theme);
+        let job_running = self.find_job.is_some();
+        let mut act = Vec::new();
+        egui::SidePanel::right("findfiles")
+            .resizable(true)
+            .default_width(320.0)
+            .min_width(250.0)
+            .max_width(560.0)
+            .frame(egui::Frame::NONE.fill(c.window).inner_margin(10))
+            .show(ctx, |ui| {
+                let f = &mut self.find;
+                ui.spacing_mut().item_spacing = vec2(4.0, 5.0);
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new("In Dateien suchen").strong());
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if icon_button(ui, icons::GLYPH_CLOSE, "✕", "Schließen (Esc)") {
+                            act.push(FindAct::Close);
+                        }
+                    });
+                });
+                ui.add_space(4.0);
+                // Feste Größen: Felder, die sich nach der verfügbaren Breite richten, würden die Leiste aufschieben.
+                let w = ui.available_width();
+                let h = 22.0;
+                let r = ui.add_sized([w, h], TextEdit::singleline(&mut f.what).hint_text("Suchen").id(egui::Id::new("files-what")));
+                if f.focus_what {
+                    f.focus_what = false;
+                    r.request_focus();
+                }
+                let enter = |ui: &Ui, r: &egui::Response| r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                if enter(ui, &r) && !job_running {
+                    act.push(FindAct::FilesFind);
+                }
+                ui.horizontal(|ui| option_toggles(ui, f));
+                ui.add_sized([w, h], TextEdit::singleline(&mut f.with).hint_text("Ersetzen durch"));
+                ui.add_space(6.0);
+                ui.label(RichText::new("Ordner").small().color(c.text_dim));
+                ui.horizontal(|ui| {
+                    let r = ui.add_sized([w - 32.0, h], TextEdit::singleline(&mut f.dir));
+                    if enter(ui, &r) && !job_running {
+                        act.push(FindAct::FilesFind);
+                    }
+                    if ui.button("…").on_hover_text("Ordner wählen").clicked() {
+                        act.push(FindAct::PickDir);
+                    }
+                });
+                ui.label(RichText::new("Dateien").small().color(c.text_dim));
+                let r = ui
+                    .add_sized([w, h], TextEdit::singleline(&mut f.filters).hint_text("*.rs *.toml"))
+                    .on_hover_text("Muster mit Leerzeichen oder ; trennen, z. B. *.rs *.md\n!muster schließt Dateien aus, z. B. !*.log\n!\\ordner schließt einen Ordner direkt im Suchordner aus\n!+\\ordner schließt ihn in jeder Tiefe aus");
+                if enter(ui, &r) && !job_running {
+                    act.push(FindAct::FilesFind);
+                }
+                ui.checkbox(&mut f.subfolders, "Unterordner einbeziehen");
+                ui.checkbox(&mut f.hidden, "Versteckte Ordner einbeziehen");
+                ui.add_space(8.0);
+                ui.horizontal(|ui| {
+                    if ui.add_enabled(!job_running, egui::Button::new("Suchen")).clicked() {
+                        act.push(FindAct::FilesFind);
+                    }
+                    if ui.add_enabled(!job_running, egui::Button::new("Ersetzen …")).on_hover_text("In allen Treffern ersetzen, mit Rückfrage").clicked() {
+                        act.push(FindAct::FilesReplace);
+                    }
+                    if job_running && ui.button("Abbrechen").clicked() {
+                        act.push(FindAct::Cancel);
+                    }
+                });
+                if job_running {
+                    ui.horizontal(|ui| {
+                        ui.spinner();
+                        ui.label("Suche läuft …");
+                    });
+                }
+                if !f.message.is_empty() {
+                    ui.add_space(6.0);
+                    let color = if f.message_err { ERROR_RED } else { c.text };
+                    ui.add(egui::Label::new(RichText::new(&f.message).color(color)).wrap());
+                }
+            });
+        act
+    }
+}
+
+/// Was in Suchleiste oder Seitenleiste angeklickt wurde; ausgeführt nach dem Zeichnen.
+enum FindAct {
+    Next,
+    Prev,
+    Count,
+    Replace,
+    ReplaceAll,
+    ReplaceOpen,
+    ListCurrent,
+    ListOpen,
+    MarkAll,
+    ClearMarks,
+    ShowFiles,
+    FilesFind,
+    FilesReplace,
+    PickDir,
+    Cancel,
+    Close,
+}
+
+const ERROR_RED: egui::Color32 = egui::Color32::from_rgb(0xD0, 0x40, 0x40);
+const GLYPH_ARROW_UP: char = '\u{E74A}';
+const GLYPH_ARROW_DOWN: char = '\u{E74B}';
+const GLYPH_MORE: char = '\u{E712}';
+/// Ab dieser Länge zählt die Suchleiste nicht mehr bei jeder Änderung mit.
+const LIVE_COUNT_MAX_CHARS: usize = 3_000_000;
+
+/// Kleiner Knopf mit Segoe-Symbol (oder Unicode-Ersatz), ohne Rahmen.
+fn icon_button(ui: &mut Ui, glyph: char, fallback: &str, tip: &str) -> bool {
+    ui.add(egui::Button::new(icons::rich(glyph, fallback, 12.0)).frame(false).min_size(vec2(24.0, 22.0)))
+        .on_hover_text(tip)
+        .clicked()
+}
+
+/// Schalter für Groß/Klein, ganze Wörter, reguläre Ausdrücke und Steuerzeichen.
+fn option_toggles(ui: &mut Ui, f: &mut FindUi) {
+    let mono = |s: &str| RichText::new(s).monospace().size(12.0);
+    ui.toggle_value(&mut f.case, mono("Aa")).on_hover_text("Groß-/Kleinschreibung beachten");
+    ui.toggle_value(&mut f.whole, mono("ab").underline()).on_hover_text("Nur ganze Wörter");
+    let mut regex = f.mode == Mode::Regex;
+    if ui.toggle_value(&mut regex, mono(".*")).on_hover_text("Regulärer Ausdruck").changed() {
+        f.mode = if regex { Mode::Regex } else { Mode::Normal };
+    }
+    let mut escapes = f.mode == Mode::Extended;
+    if ui
+        .toggle_value(&mut escapes, mono("\\n"))
+        .on_hover_text("Steuerzeichen auswerten: \\n \\t \\r \\0 \\\\ \\xHH \\uHHHH")
+        .changed()
+    {
+        f.mode = if escapes { Mode::Extended } else { Mode::Normal };
     }
 }
 
