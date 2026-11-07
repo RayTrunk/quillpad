@@ -3,6 +3,7 @@ use crate::app::{Action, App, Dialog, APP_NAME};
 use crate::doc::{DocId, SelSet};
 use crate::fileio::Eol;
 use crate::highlight;
+use crate::t;
 use crate::ui_chrome::{self, chrome};
 use egui::{pos2, vec2, Align2, Color32, Context, FontFamily, FontId, RichText, Sense, Stroke, StrokeKind, Ui};
 use std::path::PathBuf;
@@ -34,17 +35,17 @@ const MAX_ROWS: usize = 500_000;
 
 pub fn files_label(n: usize) -> String {
     if n == 1 {
-        "1 Datei".to_string()
+        t!("results.files_one")
     } else {
-        format!("{n} Dateien")
+        t!("results.files_many", n = n)
     }
 }
 
 pub fn docs_label(n: usize) -> String {
     if n == 1 {
-        "1 Dokument".to_string()
+        t!("results.docs_one")
     } else {
-        format!("{n} Dokumenten")
+        t!("results.docs_many", n = n)
     }
 }
 
@@ -57,7 +58,7 @@ impl Results {
                 *collapsed = true;
             }
         }
-        self.rows.insert(0, ResRow::Search { title, summary: "läuft …".into(), collapsed: false });
+        self.rows.insert(0, ResRow::Search { title, summary: t!("results.running"), collapsed: false });
         self.current = Some(0);
         self.dirty = true;
         if self.rows.len() > MAX_ROWS {
@@ -82,7 +83,7 @@ impl Results {
 
     pub fn finish(&mut self, hits: usize, files: usize) {
         if let Some(ResRow::Search { summary, .. }) = self.rows.get_mut(0) {
-            *summary = format!("{hits} Treffer in {}", files_label(files));
+            *summary = t!("results.summary", hits = hits, files = files_label(files));
         }
         self.dirty = true;
     }
@@ -138,12 +139,12 @@ impl App {
             .frame(egui::Frame::NONE.fill(c.window).inner_margin(4))
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new("Suchergebnisse").strong());
+                    ui.label(RichText::new(t!("results.title")).strong());
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.small_button("✖").on_hover_text("Schließen").clicked() {
+                        if ui.small_button("✖").on_hover_text(t!("panel.close")).clicked() {
                             self.results.open = false;
                         }
-                        if ui.small_button("Leeren").clicked() {
+                        if ui.small_button(t!("results.clear")).clicked() {
                             self.results.rows.clear();
                             self.results.dirty = true;
                         }
@@ -172,7 +173,7 @@ impl App {
                                     }
                                     ResRow::File { name, count, collapsed } => {
                                         ui.add_space(12.0);
-                                        let label = RichText::new(format!("{name} ({count} Treffer)")).color(Color32::from_rgb(0x20, 0x80, 0x40));
+                                        let label = RichText::new(t!("results.file_hits", name = name, count = count)).color(Color32::from_rgb(0x20, 0x80, 0x40));
                                         if toggle_label(ui, *collapsed, label) {
                                             *collapsed = !*collapsed;
                                             self.results.dirty = true;
@@ -186,7 +187,7 @@ impl App {
                                         let b = (hit.col + hit.len).min(chars.len());
                                         let mut job = egui::text::LayoutJob::default();
                                         let fmt = |color: Color32, bg: Color32| egui::TextFormat { font_id: mono.clone(), color, background: bg, ..Default::default() };
-                                        job.append(&format!("Zeile {}:  ", hit.line + 1), 0.0, fmt(pal.gutter_fg, Color32::TRANSPARENT));
+                                        job.append(&format!("{}  ", t!("results.line", line = hit.line + 1)), 0.0, fmt(pal.gutter_fg, Color32::TRANSPARENT));
                                         job.append(&chars[..a].iter().collect::<String>(), 0.0, fmt(pal.fg, Color32::TRANSPARENT));
                                         job.append(&chars[a..b].iter().collect::<String>(), 0.0, fmt(pal.fg, pal.smart_bg));
                                         job.append(&chars[b..].iter().collect::<String>(), 0.0, fmt(pal.fg, Color32::TRANSPARENT));
@@ -234,15 +235,15 @@ impl App {
                 .frame(egui::Frame::NONE.fill(c.window).inner_margin(4))
                 .show(ctx, |ui| {
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new("Projektordner").strong());
+                        ui.label(RichText::new(t!("panel.folder")).strong());
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.small_button("✖").on_hover_text("Schließen").clicked() {
+                            if ui.small_button("✖").on_hover_text(t!("panel.close")).clicked() {
                                 close = true;
                             }
-                            if ui.small_button("⟳").on_hover_text("Neu einlesen").clicked() {
+                            if ui.small_button("⟳").on_hover_text(t!("panel.rescan")).clicked() {
                                 self.folder_cache.clear();
                             }
-                            if ui.small_button("…").on_hover_text("Ordner wählen").clicked() {
+                            if ui.small_button("…").on_hover_text(t!("panel.pick_folder")).clicked() {
                                 self.pending.push(Action::PickWorkspace);
                             }
                         });
@@ -251,7 +252,7 @@ impl App {
                     egui::ScrollArea::both().auto_shrink([false, false]).show(ui, |ui| match root {
                         Some(r) => self.folder_ui(ui, &PathBuf::from(&r), true),
                         None => {
-                            ui.label("Noch kein Ordner gewählt.");
+                            ui.label(t!("panel.no_folder"));
                         }
                     });
                 });
@@ -275,7 +276,7 @@ impl App {
                 .frame(egui::Frame::NONE.fill(c.window).inner_margin(4))
                 .show(ctx, |ui| {
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new("Gliederung").strong());
+                        ui.label(RichText::new(t!("panel.outline")).strong());
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             if ui.small_button("✖").clicked() {
                                 close = true;
@@ -347,13 +348,13 @@ impl App {
         }
         let Some((_, _, list)) = self.func_cache.clone() else { return };
         if list.is_empty() {
-            ui.label(if lang.is_some() { "Keine Funktionen gefunden." } else { "Für normalen Text gibt es keine Funktionen." });
+            ui.label(if lang.is_some() { t!("panel.no_functions") } else { t!("panel.no_functions_plain") });
             return;
         }
         let mut goto = None;
         egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
             for (name, line) in &list {
-                if ui.selectable_label(false, name).on_hover_text(format!("Zeile {}", line + 1)).clicked() {
+                if ui.selectable_label(false, name).on_hover_text(t!("panel.line", line = line + 1)).clicked() {
                     goto = Some(*line);
                 }
             }
@@ -429,7 +430,7 @@ impl App {
                     ui.set_max_width(460.0);
                     ui.label(text.as_str());
                     ui.add_space(8.0);
-                    if ui.button("OK").clicked() || esc {
+                    if ui.button(t!("dialog.ok")).clicked() || esc {
                         keep = false;
                     }
                 });
@@ -438,17 +439,17 @@ impl App {
                 let id = *doc;
                 let name = self.docs.get(&id).map(|d| d.name()).unwrap_or_default();
                 let mut answer: Option<Option<bool>> = None;
-                center("Speichern?").show(ctx, |ui| {
-                    ui.label(format!("„{name}“ wurde geändert. Änderungen speichern?"));
+                center(&t!("dialog.save_title")).show(ctx, |ui| {
+                    ui.label(t!("dialog.save_changes", name = name));
                     ui.add_space(8.0);
                     ui.horizontal(|ui| {
-                        if ui.button("Speichern").clicked() {
+                        if ui.button(t!("dialog.save")).clicked() {
                             answer = Some(Some(true));
                         }
-                        if ui.button("Nicht speichern").clicked() {
+                        if ui.button(t!("dialog.dont_save")).clicked() {
                             answer = Some(Some(false));
                         }
-                        if ui.button("Abbrechen").clicked() || esc {
+                        if ui.button(t!("dialog.cancel")).clicked() || esc {
                             answer = Some(None);
                         }
                     });
@@ -464,15 +465,15 @@ impl App {
                     (d.text.char_to_line(self.cur_view().sels.main().head) + 1, d.lines(), d.len())
                 };
                 let mut go = false;
-                center("Gehe zu").show(ctx, |ui| {
+                center(&t!("dialog.goto_title")).show(ctx, |ui| {
                     ui.horizontal(|ui| {
-                        ui.radio_value(by_offset, false, "Zeile");
-                        ui.radio_value(by_offset, true, "Zeichenposition");
+                        ui.radio_value(by_offset, false, t!("dialog.goto_line"));
+                        ui.radio_value(by_offset, true, t!("dialog.goto_offset"));
                     });
                     ui.label(if *by_offset {
-                        format!("Position (1 bis {}):", len + 1)
+                        t!("dialog.goto_offset_prompt", max = len + 1)
                     } else {
-                        format!("Zeile (aktuell {cur_line}, höchstens {lines}):")
+                        t!("dialog.goto_line_prompt", current = cur_line, max = lines)
                     });
                     let r = ui.add(egui::TextEdit::singleline(input).desired_width(180.0));
                     if *first {
@@ -484,8 +485,8 @@ impl App {
                     }
                     ui.add_space(6.0);
                     ui.horizontal(|ui| {
-                        go |= ui.button("Los").clicked();
-                        if ui.button("Abbrechen").clicked() || esc {
+                        go |= ui.button(t!("dialog.goto_go")).clicked();
+                        if ui.button(t!("dialog.cancel")).clicked() || esc {
                             keep = false;
                         }
                     });
@@ -507,10 +508,10 @@ impl App {
             }
             Dialog::Update { release, auto } => {
                 let mut open_page = false;
-                center("Update verfügbar").show(ctx, |ui| {
+                center(&t!("update.title")).show(ctx, |ui| {
                     ui.set_max_width(460.0);
-                    ui.label(RichText::new(format!("{APP_NAME} {} ist verfügbar.", release.version)).strong());
-                    ui.label(format!("Du verwendest Version {}.", crate::update::VERSION));
+                    ui.label(RichText::new(t!("update.available", app = APP_NAME, version = release.version)).strong());
+                    ui.label(t!("update.current", version = crate::update::VERSION));
                     let notes = release.notes.trim();
                     if !notes.is_empty() {
                         ui.add_space(6.0);
@@ -519,14 +520,14 @@ impl App {
                         });
                     }
                     ui.add_space(6.0);
-                    ui.checkbox(auto, "Beim Start automatisch nach Updates suchen");
+                    ui.checkbox(auto, t!("update.auto"));
                     ui.add_space(6.0);
                     ui.horizontal(|ui| {
-                        if ui.button("Zur Download-Seite").clicked() {
+                        if ui.button(t!("update.download")).clicked() {
                             open_page = true;
                             keep = false;
                         }
-                        if ui.button("Später").clicked() || esc {
+                        if ui.button(t!("update.later")).clicked() || esc {
                             keep = false;
                         }
                     });
@@ -537,50 +538,44 @@ impl App {
                 }
             }
             Dialog::About => {
-                center(&format!("Über {APP_NAME}")).show(ctx, |ui| {
+                center(&t!("about.title", app = APP_NAME)).show(ctx, |ui| {
                     ui.heading(APP_NAME);
-                    ui.label("Ein schneller Texteditor mit Tabs, farbigem Code und mächtiger Suche.");
-                    ui.label(format!("Version {}", env!("CARGO_PKG_VERSION")));
+                    ui.label(t!("about.tagline"));
+                    ui.label(t!("about.version", version = env!("CARGO_PKG_VERSION")));
                     ui.label("© 2026 R. Trunk");
                     ui.add_space(4.0);
-                    ui.label(
-                        RichText::new(
-                            "Freie Software unter der GNU General Public License, Version 3 oder neuer. \
-                             Ohne jede Gewährleistung.",
-                        )
-                        .small(),
-                    );
+                    ui.label(RichText::new(t!("about.license")).small());
                     ui.horizontal(|ui| {
-                        ui.hyperlink_to("Quillpad auf GitHub", crate::update::REPO_URL);
+                        ui.hyperlink_to(t!("about.github"), crate::update::REPO_URL);
                         ui.label("·");
-                        ui.hyperlink_to("Lizenztext", "https://www.gnu.org/licenses/gpl-3.0.html");
+                        ui.hyperlink_to(t!("about.license_text"), "https://www.gnu.org/licenses/gpl-3.0.html");
                     });
                     ui.add_space(8.0);
-                    if ui.button("OK").clicked() || esc {
+                    if ui.button(t!("dialog.ok")).clicked() || esc {
                         keep = false;
                     }
                 });
             }
             Dialog::Summary { text } => {
-                center("Dokumentinfo").show(ctx, |ui| {
+                center(&t!("dialog.summary_title")).show(ctx, |ui| {
                     ui.label(text.as_str());
                     ui.add_space(8.0);
-                    if ui.button("OK").clicked() || esc {
+                    if ui.button(t!("dialog.ok")).clicked() || esc {
                         keep = false;
                     }
                 });
             }
             Dialog::Hash { title, value } => {
                 let v = value.clone();
-                center(&format!("Prüfsumme {title}")).show(ctx, |ui| {
+                center(&t!("dialog.hash_title", name = title)).show(ctx, |ui| {
                     ui.set_max_width(520.0);
                     ui.add(egui::Label::new(RichText::new(&v).monospace()).wrap());
                     ui.add_space(8.0);
                     ui.horizontal(|ui| {
-                        if ui.button("Kopieren").clicked() {
+                        if ui.button(t!("dialog.copy")).clicked() {
                             ctx.copy_text(v.clone());
                         }
-                        if ui.button("Schließen").clicked() || esc {
+                        if ui.button(t!("dialog.close")).clicked() || esc {
                             keep = false;
                         }
                     });
@@ -590,11 +585,11 @@ impl App {
                 let mut font_changed = None;
                 let mut style_changed = false;
                 let mut size = self.settings.font_size;
-                center("Optionen").show(ctx, |ui| {
+                center(&t!("prefs.title")).show(ctx, |ui| {
                     ui.set_min_width(390.0);
                     let s = &mut self.settings;
                     egui::Grid::new("prefs").num_columns(2).spacing([14.0, 6.0]).show(ui, |ui| {
-                        ui.label("Schriftart:");
+                        ui.label(t!("prefs.font"));
                         egui::ComboBox::from_id_salt("pref-font").selected_text(s.font.clone()).show_ui(ui, |ui| {
                             for (name, _, _) in ui_chrome::FONT_CHOICES {
                                 if ui.selectable_label(s.font == name, name).clicked() {
@@ -604,13 +599,13 @@ impl App {
                             }
                         });
                         ui.end_row();
-                        ui.label("Schriftgröße:");
+                        ui.label(t!("prefs.font_size"));
                         ui.add(egui::DragValue::new(&mut size).range(6.0..=72.0).speed(0.25));
                         ui.end_row();
-                        ui.label("Tabbreite:");
+                        ui.label(t!("prefs.tab_width"));
                         ui.add(egui::DragValue::new(&mut s.ed.tab_size).range(1..=16));
                         ui.end_row();
-                        ui.label("Neue Dokumente:");
+                        ui.label(t!("prefs.new_docs"));
                         ui.horizontal(|ui| {
                             egui::ComboBox::from_id_salt("pref-eol")
                                 .selected_text(Eol::from_name(&s.default_eol).label())
@@ -625,17 +620,17 @@ impl App {
                         ui.end_row();
                     });
                     ui.add_space(6.0);
-                    ui.checkbox(&mut s.ed.use_spaces, "Tab-Taste fügt Leerzeichen ein");
-                    ui.checkbox(&mut s.ed.auto_indent, "Automatisch einrücken");
-                    ui.checkbox(&mut s.ed.auto_close, "Klammern und Anführungszeichen automatisch schließen");
-                    ui.checkbox(&mut s.ed.smart_highlight, "Gleiche Wörter zur Markierung hervorheben");
-                    ui.checkbox(&mut s.ed.highlight_line, "Aktuelle Zeile hervorheben");
-                    ui.checkbox(&mut s.ed.brace_match, "Passende Klammern hervorheben");
+                    ui.checkbox(&mut s.ed.use_spaces, t!("prefs.use_spaces"));
+                    ui.checkbox(&mut s.ed.auto_indent, t!("prefs.auto_indent"));
+                    ui.checkbox(&mut s.ed.auto_close, t!("prefs.auto_close"));
+                    ui.checkbox(&mut s.ed.smart_highlight, t!("prefs.smart_highlight"));
+                    ui.checkbox(&mut s.ed.highlight_line, t!("prefs.highlight_line"));
+                    ui.checkbox(&mut s.ed.brace_match, t!("prefs.brace_match"));
                     ui.horizontal(|ui| {
-                        ui.checkbox(&mut s.ed.auto_complete, "Wörter beim Tippen vorschlagen ab Zeichen");
+                        ui.checkbox(&mut s.ed.auto_complete, t!("prefs.auto_complete"));
                         ui.add(egui::DragValue::new(&mut s.ed.auto_complete_from).range(1..=9));
                     });
-                    ui.checkbox(&mut s.auto_reload, "Geänderte Dateien ohne Nachfrage neu laden");
+                    ui.checkbox(&mut s.auto_reload, t!("prefs.auto_reload"));
                     ui.horizontal(|ui| {
                         ui.label(crate::t!("common.language"));
                         let system = crate::t!("common.language_system", name = crate::i18n::system_lang().native_name());
@@ -651,7 +646,7 @@ impl App {
                             });
                     });
                     ui.horizontal(|ui| {
-                        ui.label("Design:");
+                        ui.label(t!("prefs.theme"));
                         egui::ComboBox::from_id_salt("theme")
                             .selected_text(s.theme.label())
                             .width(170.0)
@@ -661,14 +656,14 @@ impl App {
                                 }
                             });
                     });
-                    ui.checkbox(&mut s.remember_session, "Offene Tabs und Ungespeichertes beim Beenden merken");
-                    ui.checkbox(&mut s.update_check, "Beim Start nach Updates suchen (höchstens einmal am Tag)");
+                    ui.checkbox(&mut s.remember_session, t!("prefs.remember_session"));
+                    ui.checkbox(&mut s.update_check, t!("prefs.update_check"));
                     ui.horizontal(|ui| {
-                        ui.checkbox(&mut s.large_file_enabled, "Einschränkungen für große Dateien ab");
-                        ui.add(egui::DragValue::new(&mut s.large_file_mb).range(1..=4096).suffix(" MB"));
+                        ui.checkbox(&mut s.large_file_enabled, t!("prefs.large_file"));
+                        ui.add(egui::DragValue::new(&mut s.large_file_mb).range(1..=4096).suffix(t!("prefs.megabytes")));
                     });
                     ui.add_space(8.0);
-                    if ui.button("Schließen").clicked() || esc {
+                    if ui.button(t!("dialog.close")).clicked() || esc {
                         keep = false;
                     }
                 });
@@ -689,7 +684,7 @@ impl App {
                 }
             }
             Dialog::Shortcuts => {
-                center("Tastenkürzel").show(ctx, |ui| {
+                center(&t!("dialog.shortcuts_title")).show(ctx, |ui| {
                     ui.set_min_width(400.0);
                     egui::ScrollArea::vertical().max_height(420.0).show(ui, |ui| {
                         egui::Grid::new("keys").num_columns(2).striped(true).spacing([18.0, 3.0]).show(ui, |ui| {
@@ -701,48 +696,48 @@ impl App {
                         });
                     });
                     ui.add_space(6.0);
-                    if ui.button("Schließen").clicked() || esc {
+                    if ui.button(t!("dialog.close")).clicked() || esc {
                         keep = false;
                     }
                 });
             }
             Dialog::Column { text, numbers, start, step, repeat, leading, format } => {
                 let mut go = false;
-                center("Zahlenfolge einfügen").show(ctx, |ui| {
-                    ui.radio_value(numbers, false, "Text einfügen");
+                center(&t!("dialog.column_title")).show(ctx, |ui| {
+                    ui.radio_value(numbers, false, t!("dialog.column_text"));
                     ui.add_enabled(!*numbers, egui::TextEdit::singleline(text).desired_width(240.0));
                     ui.add_space(4.0);
-                    ui.radio_value(numbers, true, "Zahlen einfügen");
+                    ui.radio_value(numbers, true, t!("dialog.column_numbers"));
                     ui.add_enabled_ui(*numbers, |ui| {
                         egui::Grid::new("col").num_columns(2).show(ui, |ui| {
-                            ui.label("Startwert:");
+                            ui.label(t!("dialog.column_start"));
                             ui.add(egui::TextEdit::singleline(start).desired_width(80.0));
                             ui.end_row();
-                            ui.label("Schrittweite:");
+                            ui.label(t!("dialog.column_step"));
                             ui.add(egui::TextEdit::singleline(step).desired_width(80.0));
                             ui.end_row();
-                            ui.label("Wiederholen:");
+                            ui.label(t!("dialog.column_repeat"));
                             ui.add(egui::TextEdit::singleline(repeat).desired_width(80.0));
                             ui.end_row();
                         });
                         ui.horizontal(|ui| {
-                            ui.label("Auffüllen:");
-                            ui.radio_value(leading, 0, "Nichts");
-                            ui.radio_value(leading, 1, "Nullen");
-                            ui.radio_value(leading, 2, "Leerzeichen");
+                            ui.label(t!("dialog.column_pad"));
+                            ui.radio_value(leading, 0, t!("dialog.column_pad_none"));
+                            ui.radio_value(leading, 1, t!("dialog.column_pad_zeros"));
+                            ui.radio_value(leading, 2, t!("dialog.column_pad_spaces"));
                         });
                         ui.horizontal(|ui| {
-                            ui.radio_value(format, 0, "Dezimal");
-                            ui.radio_value(format, 1, "Hex");
-                            ui.radio_value(format, 2, "HEX");
-                            ui.radio_value(format, 3, "Oktal");
-                            ui.radio_value(format, 4, "Binär");
+                            ui.radio_value(format, 0, t!("dialog.column_dec"));
+                            ui.radio_value(format, 1, t!("dialog.column_hex"));
+                            ui.radio_value(format, 2, t!("dialog.column_hex_upper"));
+                            ui.radio_value(format, 3, t!("dialog.column_oct"));
+                            ui.radio_value(format, 4, t!("dialog.column_bin"));
                         });
                     });
                     ui.add_space(6.0);
                     ui.horizontal(|ui| {
-                        go = ui.button("OK").clicked();
-                        if ui.button("Abbrechen").clicked() || esc {
+                        go = ui.button(t!("dialog.ok")).clicked();
+                        if ui.button(t!("dialog.cancel")).clicked() || esc {
                             keep = false;
                         }
                     });
@@ -766,18 +761,18 @@ impl App {
                 let id = *doc;
                 let name = self.docs.get(&id).map(|d| d.name()).unwrap_or_default();
                 let modified = self.docs.get(&id).is_some_and(|d| d.is_modified());
-                center("Datei geändert").show(ctx, |ui| {
-                    ui.label(format!("„{name}“ wurde außerhalb des Editors geändert. Neu laden?"));
+                center(&t!("dialog.reload_title")).show(ctx, |ui| {
+                    ui.label(t!("dialog.reload_text", name = name));
                     if modified {
-                        ui.colored_label(Color32::from_rgb(0xC0, 0x30, 0x30), "Deine ungespeicherten Änderungen gehen dabei verloren.");
+                        ui.colored_label(Color32::from_rgb(0xC0, 0x30, 0x30), t!("dialog.reload_loss"));
                     }
                     ui.add_space(8.0);
                     ui.horizontal(|ui| {
-                        if ui.button("Neu laden").clicked() {
+                        if ui.button(t!("dialog.reload")).clicked() {
                             self.reload_doc(id);
                             keep = false;
                         }
-                        if ui.button("Behalten").clicked() || esc {
+                        if ui.button(t!("dialog.keep")).clicked() || esc {
                             // Der Text weicht jetzt von der Datei ab und gilt als ungespeichert.
                             if let Some(d) = self.docs.get_mut(&id) {
                                 d.extra_dirty = true;
@@ -790,15 +785,15 @@ impl App {
             Dialog::DeletedAsk { doc } => {
                 let id = *doc;
                 let name = self.docs.get(&id).map(|d| d.name()).unwrap_or_default();
-                center("Datei fehlt").show(ctx, |ui| {
-                    ui.label(format!("„{name}“ existiert nicht mehr auf der Festplatte."));
-                    ui.label("Im Editor behalten? Dann kann der Text neu gespeichert werden.");
+                center(&t!("dialog.deleted_title")).show(ctx, |ui| {
+                    ui.label(t!("dialog.deleted_text", name = name));
+                    ui.label(t!("dialog.deleted_hint"));
                     ui.add_space(8.0);
                     ui.horizontal(|ui| {
-                        if ui.button("Im Editor behalten").clicked() || esc {
+                        if ui.button(t!("dialog.keep_in_editor")).clicked() || esc {
                             keep = false;
                         }
-                        if ui.button("Schließen").clicked() {
+                        if ui.button(t!("dialog.close")).clicked() {
                             keep = false;
                             self.close_doc_everywhere(id);
                         }
@@ -807,8 +802,8 @@ impl App {
             }
             Dialog::Rename { name, first } => {
                 let mut go = false;
-                center("Umbenennen").show(ctx, |ui| {
-                    ui.label("Neuer Name:");
+                center(&t!("dialog.rename_title")).show(ctx, |ui| {
+                    ui.label(t!("dialog.rename_label"));
                     let r = ui.add(egui::TextEdit::singleline(name).desired_width(300.0));
                     if *first {
                         *first = false;
@@ -819,8 +814,8 @@ impl App {
                     }
                     ui.add_space(6.0);
                     ui.horizontal(|ui| {
-                        go |= ui.button("Umbenennen").clicked();
-                        if ui.button("Abbrechen").clicked() || esc {
+                        go |= ui.button(t!("dialog.rename")).clicked();
+                        if ui.button(t!("dialog.cancel")).clicked() || esc {
                             keep = false;
                         }
                     });
@@ -829,7 +824,7 @@ impl App {
                     let new_name = name.trim().to_string();
                     keep = false;
                     if let Err(e) = self.rename_current(&new_name) {
-                        self.message("Umbenennen", e);
+                        self.message(&t!("dialog.rename_title"), e);
                         return;
                     }
                 }
@@ -837,18 +832,18 @@ impl App {
             Dialog::LossySave { doc, path } => {
                 let (id, p) = (*doc, path.clone());
                 let enc = self.docs.get(&id).map(|d| d.enc.label()).unwrap_or_default();
-                center("Zeichen passen nicht").show(ctx, |ui| {
-                    ui.label(format!("Einige Zeichen lassen sich in {enc} nicht speichern und gingen verloren."));
+                center(&t!("dialog.lossy_title")).show(ctx, |ui| {
+                    ui.label(t!("dialog.lossy_text", enc = enc));
                     ui.add_space(8.0);
                     ui.horizontal(|ui| {
-                        if ui.button("Als UTF-8 speichern").clicked() {
+                        if ui.button(t!("dialog.save_as_utf8")).clicked() {
                             if let Some(d) = self.docs.get_mut(&id) {
                                 d.enc = crate::fileio::Enc::Utf8;
                             }
                             keep = false;
                             self.write_doc(id, &p, false);
                         }
-                        if ui.button("Abbrechen").clicked() || esc {
+                        if ui.button(t!("dialog.cancel")).clicked() || esc {
                             keep = false;
                             self.closing.clear();
                             self.exit_after_close = false;
@@ -857,15 +852,15 @@ impl App {
                 });
             }
             Dialog::ConfirmReplaceOpen => {
-                center("Alle ersetzen").show(ctx, |ui| {
-                    ui.label("Alle Treffer in allen offenen Tabs ersetzen?");
+                center(&t!("dialog.replace_open_title")).show(ctx, |ui| {
+                    ui.label(t!("dialog.replace_open_text"));
                     ui.add_space(8.0);
                     ui.horizontal(|ui| {
-                        if ui.button("Ersetzen").clicked() {
+                        if ui.button(t!("dialog.replace")).clicked() {
                             keep = false;
                             self.replace_all_open();
                         }
-                        if ui.button("Abbrechen").clicked() || esc {
+                        if ui.button(t!("dialog.cancel")).clicked() || esc {
                             keep = false;
                         }
                     });
@@ -873,16 +868,16 @@ impl App {
             }
             Dialog::HugeOpen { path } => {
                 let p = path.clone();
-                center("Warnung: riesige Datei").show(ctx, |ui| {
-                    ui.label("Eine riesige Datei ab 2 GB zu öffnen kann einige Minuten dauern.");
-                    ui.label("Möchtest du sie öffnen?");
+                center(&t!("dialog.huge_title")).show(ctx, |ui| {
+                    ui.label(t!("dialog.huge_text"));
+                    ui.label(t!("dialog.huge_question"));
                     ui.add_space(8.0);
                     ui.horizontal(|ui| {
-                        if ui.button("Ja").clicked() {
+                        if ui.button(t!("dialog.yes")).clicked() {
                             keep = false;
                             self.open_path_checked(&p, true);
                         }
-                        if ui.button("Nein").clicked() || esc {
+                        if ui.button(t!("dialog.no")).clicked() || esc {
                             keep = false;
                         }
                     });
@@ -890,17 +885,17 @@ impl App {
             }
             Dialog::ConfirmReplaceFiles { count_hint } => {
                 let hint = count_hint.clone();
-                center("In Dateien ersetzen").show(ctx, |ui| {
+                center(&t!("dialog.replace_files_title")).show(ctx, |ui| {
                     ui.set_max_width(480.0);
                     ui.label(hint);
                     ui.add_space(8.0);
                     ui.horizontal(|ui| {
-                        if ui.button("Ersetzen").clicked() {
+                        if ui.button(t!("dialog.replace")).clicked() {
                             let with = self.find.with.clone();
                             self.start_file_job(Some(with));
                             keep = false;
                         }
-                        if ui.button("Abbrechen").clicked() || esc {
+                        if ui.button(t!("dialog.cancel")).clicked() || esc {
                             keep = false;
                         }
                     });
@@ -914,7 +909,7 @@ impl App {
 
     pub fn rename_current(&mut self, new_name: &str) -> Result<(), String> {
         let id = self.cur_id();
-        let d = self.docs.get_mut(&id).ok_or("Kein Dokument offen")?;
+        let d = self.docs.get_mut(&id).ok_or_else(|| t!("dialog.rename_no_doc"))?;
         match d.path.clone() {
             None => {
                 d.title = new_name.to_string();
@@ -923,9 +918,9 @@ impl App {
             Some(old) => {
                 let new = old.with_file_name(new_name);
                 if new.exists() {
-                    return Err(format!("„{new_name}“ existiert dort bereits."));
+                    return Err(t!("dialog.rename_exists", name = new_name));
                 }
-                std::fs::rename(&old, &new).map_err(|e| format!("Umbenennen fehlgeschlagen:\n{e}"))?;
+                std::fs::rename(&old, &new).map_err(|e| t!("dialog.rename_failed", error = e))?;
                 d.path = Some(new.clone());
                 d.disk_mtime = crate::app::mtime(&new);
                 Ok(())
