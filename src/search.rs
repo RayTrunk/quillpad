@@ -65,7 +65,7 @@ pub fn unescape(s: &str) -> String {
 impl Query {
     pub fn compile(&self) -> Result<Regex, String> {
         if self.pattern.is_empty() {
-            return Err("Bitte einen Suchbegriff eingeben.".into());
+            return Err(crate::t!("search.empty_pattern"));
         }
         let core = match self.mode {
             Mode::Normal => regex::escape(&self.pattern),
@@ -83,7 +83,7 @@ impl Query {
             .dot_matches_new_line(self.dot_nl && self.mode == Mode::Regex)
             .size_limit(64 * 1024 * 1024)
             .build()
-            .map_err(|e| format!("Ungültiger Ausdruck: {e}"))
+            .map_err(|e| crate::t!("search.invalid_regex", error = e))
     }
 
     /// Ersetzt einen Treffer und liefert den neuen Text; Regex-Gruppen als $1 oder \1.

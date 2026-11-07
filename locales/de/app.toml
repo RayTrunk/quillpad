@@ -1,1 +1,47 @@
 # Meldungen aus Programmzustand und übrigen Dateien (src/app.rs u. a.)
+
+# Titel der Meldungsfenster
+[app]
+check_updates = "Nach Updates suchen"
+open_file = "Datei öffnen"
+save = "Speichern"
+reload = "Neu laden"
+paste = "Einfügen"
+terminal = "Terminal"
+print = "Drucken"
+
+# Gruppen im Menü „Weitere Zeichensätze“
+[app.enc_group]
+western = "Westeuropäisch"
+central = "Mitteleuropäisch"
+cyrillic = "Kyrillisch"
+greek = "Griechisch"
+turkish = "Türkisch"
+hebrew = "Hebräisch"
+arabic = "Arabisch"
+japanese = "Japanisch"
+chinese = "Chinesisch"
+korean = "Koreanisch"
+
+[msg]
+open_failed = "„{path}“ konnte nicht geöffnet werden:\n{error}"
+save_failed = "„{path}“ konnte nicht gespeichert werden:\n{error}"
+read_failed = "„{path}“ konnte nicht gelesen werden:\n{error}"
+clipboard_no_text = "Die Zwischenablage enthält keinen Text."
+no_terminal = "Auf diesem System wurde kein Terminalprogramm gefunden."
+print_failed = "Die Druckansicht konnte nicht erstellt werden:\n{error}"
+
+[info]
+summary = "Pfad: {path}\nZeichen: {chars}\nWörter: {words}\nZeilen: {lines}\nGröße im Speicher: {bytes} Byte\nMarkierte Zeichen: {selected}\nCodierung: {encoding}\nZeilenende: {eol}"
+
+[search]
+empty_pattern = "Bitte einen Suchbegriff eingeben."
+invalid_regex = "Ungültiger Ausdruck: {error}"
+
+[update_msg]
+up_to_date = "Quillpad {version} ist die neueste Version."
+failed = "Die Suche nach Updates hat nicht geklappt.\n{error}"
+unreadable = "Die Antwort von GitHub ist nicht lesbar: {error}"
+no_release = "Es ist noch kein Release veröffentlicht."
+http_error = "GitHub meldet Fehler {code}."
+no_connection = "Keine Verbindung zu GitHub: {error}"

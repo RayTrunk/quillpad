@@ -443,10 +443,10 @@ impl App {
                     match outcome {
                         Outcome::Newer(r) => self.update_found = Some(r),
                         Outcome::UpToDate if manual => {
-                            self.message("Nach Updates suchen", format!("Quillpad {} ist die neueste Version.", crate::update::VERSION));
+                            self.message(&crate::t!("app.check_updates"), crate::t!("update_msg.up_to_date", version = crate::update::VERSION));
                         }
                         Outcome::Failed(e) if manual => {
-                            self.message("Nach Updates suchen", format!("Die Suche nach Updates hat nicht geklappt.\n{e}"));
+                            self.message(&crate::t!("app.check_updates"), crate::t!("update_msg.failed", error = e));
                         }
                         // Automatische Suche: ohne Neuigkeit kein Dialog.
                         _ => {}
@@ -506,7 +506,7 @@ impl App {
         let bytes = match std::fs::read(&full) {
             Ok(b) => b,
             Err(e) => {
-                self.message("Datei öffnen", format!("„{}“ konnte nicht geöffnet werden:\n{e}", full.display()));
+                self.message(&crate::t!("app.open_file"), crate::t!("msg.open_failed", path = full.display(), error = e));
                 return None;
             }
         };
@@ -563,7 +563,7 @@ impl App {
             return false;
         }
         if let Err(e) = fileio::write_atomic(path, &bytes) {
-            self.message("Speichern", format!("„{}“ konnte nicht gespeichert werden:\n{e}", path.display()));
+            self.message(&crate::t!("app.save"), crate::t!("msg.save_failed", path = path.display(), error = e));
             return false;
         }
         if as_copy {
@@ -619,7 +619,7 @@ impl App {
                     }
                 }
             }
-            Err(e) => self.message("Neu laden", format!("„{}“ konnte nicht gelesen werden:\n{e}", path.display())),
+            Err(e) => self.message(&crate::t!("app.reload"), crate::t!("msg.read_failed", path = path.display(), error = e)),
         }
     }
 
@@ -1023,7 +1023,7 @@ impl App {
             Action::Cmd(c) => self.apply_cmd(c),
             Action::Paste => match arboard::Clipboard::new().and_then(|mut c| c.get_text()) {
                 Ok(t) => self.apply_cmd(Cmd::Paste(t)),
-                Err(_) => self.message("Einfügen", "Die Zwischenablage enthält keinen Text."),
+                Err(_) => self.message(&crate::t!("app.paste"), crate::t!("msg.clipboard_no_text")),
             },
             Action::New => {
                 self.new_doc();
@@ -1145,7 +1145,7 @@ impl App {
                             .iter()
                             .any(|t| std::process::Command::new(t).current_dir(&dir).spawn().is_ok());
                         if !started {
-                            self.message("Terminal", "Auf diesem System wurde kein Terminalprogramm gefunden.");
+                            self.message(&crate::t!("app.terminal"), crate::t!("msg.no_terminal"));
                         }
                     }
                 }
@@ -1333,10 +1333,16 @@ impl App {
                 let d = self.cur_doc();
                 let s = textops::stats(&d.full_text());
                 let sel: usize = self.cur_view().sels.sels.iter().map(|x| x.end() - x.start()).sum();
-                let text = format!(
-                    "Pfad: {}\nZeichen: {}\nWörter: {}\nZeilen: {}\nGröße im Speicher: {} Byte\nMarkierte Zeichen: {}\nCodierung: {}\nZeilenende: {}",
-                    d.path.as_ref().map(|p| p.display().to_string()).unwrap_or_else(|| d.title.clone()),
-                    s.chars, s.words, s.lines, s.bytes, sel, d.enc.label(), d.eol.label(),
+                let text = crate::t!(
+                    "info.summary",
+                    path = d.path.as_ref().map(|p| p.display().to_string()).unwrap_or_else(|| d.title.clone()),
+                    chars = s.chars,
+                    words = s.words,
+                    lines = s.lines,
+                    bytes = s.bytes,
+                    selected = sel,
+                    encoding = d.enc.label(),
+                    eol = d.eol.label(),
                 );
                 self.dialog = Some(Dialog::Summary { text });
             }
@@ -1433,7 +1439,7 @@ impl App {
         let path = std::env::temp_dir().join(format!("quillpad-druck-{}.html", std::process::id()));
         match std::fs::write(&path, html) {
             Ok(()) => open_external(&path),
-            Err(e) => self.message("Drucken", format!("Die Druckansicht konnte nicht erstellt werden:\n{e}")),
+            Err(e) => self.message(&crate::t!("app.print"), crate::t!("msg.print_failed", error = e)),
         }
     }
 

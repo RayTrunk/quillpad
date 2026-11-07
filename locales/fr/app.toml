@@ -1,1 +1,47 @@
 # Meldungen aus Programmzustand und übrigen Dateien (src/app.rs u. a.)
+
+# Titel der Meldungsfenster
+[app]
+check_updates = "Rechercher des mises à jour"
+open_file = "Ouvrir un fichier"
+save = "Enregistrer"
+reload = "Recharger"
+paste = "Coller"
+terminal = "Terminal"
+print = "Imprimer"
+
+# Gruppen im Menü „Weitere Zeichensätze“
+[app.enc_group]
+western = "Europe occidentale"
+central = "Europe centrale"
+cyrillic = "Cyrillique"
+greek = "Grec"
+turkish = "Turc"
+hebrew = "Hébreu"
+arabic = "Arabe"
+japanese = "Japonais"
+chinese = "Chinois"
+korean = "Coréen"
+
+[msg]
+open_failed = "Impossible d’ouvrir « {path} » :\n{error}"
+save_failed = "Impossible d’enregistrer « {path} » :\n{error}"
+read_failed = "Impossible de lire « {path} » :\n{error}"
+clipboard_no_text = "Le presse-papiers ne contient pas de texte."
+no_terminal = "Aucun programme de terminal n’a été trouvé sur ce système."
+print_failed = "Impossible de créer l’aperçu avant impression :\n{error}"
+
+[info]
+summary = "Chemin : {path}\nCaractères : {chars}\nMots : {words}\nLignes : {lines}\nTaille en mémoire : {bytes} octets\nCaractères sélectionnés : {selected}\nEncodage : {encoding}\nFin de ligne : {eol}"
+
+[search]
+empty_pattern = "Veuillez saisir un terme de recherche."
+invalid_regex = "Expression non valide : {error}"
+
+[update_msg]
+up_to_date = "Quillpad {version} est la version la plus récente."
+failed = "La recherche de mises à jour a échoué.\n{error}"
+unreadable = "La réponse de GitHub est illisible : {error}"
+no_release = "Aucune version n’a encore été publiée."
+http_error = "GitHub signale l’erreur {code}."
+no_connection = "Pas de connexion à GitHub : {error}"

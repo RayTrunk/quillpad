@@ -1,1 +1,47 @@
 # Meldungen aus Programmzustand und übrigen Dateien (src/app.rs u. a.)
+
+# Titel der Meldungsfenster
+[app]
+check_updates = "Check for Updates"
+open_file = "Open File"
+save = "Save"
+reload = "Reload"
+paste = "Paste"
+terminal = "Terminal"
+print = "Print"
+
+# Gruppen im Menü „Weitere Zeichensätze“
+[app.enc_group]
+western = "Western European"
+central = "Central European"
+cyrillic = "Cyrillic"
+greek = "Greek"
+turkish = "Turkish"
+hebrew = "Hebrew"
+arabic = "Arabic"
+japanese = "Japanese"
+chinese = "Chinese"
+korean = "Korean"
+
+[msg]
+open_failed = "Could not open “{path}”:\n{error}"
+save_failed = "Could not save “{path}”:\n{error}"
+read_failed = "Could not read “{path}”:\n{error}"
+clipboard_no_text = "The clipboard does not contain any text."
+no_terminal = "No terminal program was found on this system."
+print_failed = "Could not create the print preview:\n{error}"
+
+[info]
+summary = "Path: {path}\nCharacters: {chars}\nWords: {words}\nLines: {lines}\nSize in memory: {bytes} bytes\nSelected characters: {selected}\nEncoding: {encoding}\nLine ending: {eol}"
+
+[search]
+empty_pattern = "Please enter a search term."
+invalid_regex = "Invalid expression: {error}"
+
+[update_msg]
+up_to_date = "Quillpad {version} is the latest version."
+failed = "Checking for updates did not work.\n{error}"
+unreadable = "The response from GitHub could not be read: {error}"
+no_release = "No release has been published yet."
+http_error = "GitHub reported error {code}."
+no_connection = "No connection to GitHub: {error}"
