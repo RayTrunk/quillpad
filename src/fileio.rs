@@ -61,21 +61,44 @@ pub enum Enc {
 /// Zeichensätze im Menü „Codierung“: (Gruppe, Anzeigename, Kodierung)
 pub fn legacy_list() -> Vec<(&'static str, &'static str, &'static Encoding)> {
     use encoding_rs::*;
+    let [west, central, cyrillic, greek, turkish, hebrew, arabic, japanese, chinese, korean] = *legacy_groups();
     vec![
-        ("Westeuropäisch", "ISO 8859-15", ISO_8859_15),
-        ("Mitteleuropäisch", "Windows-1250", WINDOWS_1250),
-        ("Mitteleuropäisch", "ISO 8859-2", ISO_8859_2),
-        ("Kyrillisch", "Windows-1251", WINDOWS_1251),
-        ("Kyrillisch", "KOI8-R", KOI8_R),
-        ("Griechisch", "Windows-1253", WINDOWS_1253),
-        ("Türkisch", "Windows-1254", WINDOWS_1254),
-        ("Hebräisch", "Windows-1255", WINDOWS_1255),
-        ("Arabisch", "Windows-1256", WINDOWS_1256),
-        ("Japanisch", "Shift-JIS", SHIFT_JIS),
-        ("Chinesisch", "GBK", GBK),
-        ("Chinesisch", "Big5", BIG5),
-        ("Koreanisch", "EUC-KR", EUC_KR),
+        (west, "ISO 8859-15", ISO_8859_15),
+        (central, "Windows-1250", WINDOWS_1250),
+        (central, "ISO 8859-2", ISO_8859_2),
+        (cyrillic, "Windows-1251", WINDOWS_1251),
+        (cyrillic, "KOI8-R", KOI8_R),
+        (greek, "Windows-1253", WINDOWS_1253),
+        (turkish, "Windows-1254", WINDOWS_1254),
+        (hebrew, "Windows-1255", WINDOWS_1255),
+        (arabic, "Windows-1256", WINDOWS_1256),
+        (japanese, "Shift-JIS", SHIFT_JIS),
+        (chinese, "GBK", GBK),
+        (chinese, "Big5", BIG5),
+        (korean, "EUC-KR", EUC_KR),
     ]
+}
+
+/// Gruppennamen der Zeichensätze in der eingestellten Sprache. Das Menü braucht
+/// `&'static str`; deshalb wird je Sprache einmal festgehalten (wenige Bytes, wächst nicht).
+fn legacy_groups() -> &'static [&'static str; 10] {
+    use std::sync::OnceLock;
+    static CACHE: [OnceLock<[&'static str; 10]>; 3] = [OnceLock::new(), OnceLock::new(), OnceLock::new()];
+    CACHE[crate::i18n::lang() as usize].get_or_init(|| {
+        [
+            crate::t!("app.enc_group.western"),
+            crate::t!("app.enc_group.central"),
+            crate::t!("app.enc_group.cyrillic"),
+            crate::t!("app.enc_group.greek"),
+            crate::t!("app.enc_group.turkish"),
+            crate::t!("app.enc_group.hebrew"),
+            crate::t!("app.enc_group.arabic"),
+            crate::t!("app.enc_group.japanese"),
+            crate::t!("app.enc_group.chinese"),
+            crate::t!("app.enc_group.korean"),
+        ]
+        .map(|s| &*Box::leak(s.into_boxed_str()))
+    })
 }
 
 impl Enc {

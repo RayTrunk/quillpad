@@ -59,10 +59,10 @@ fn fetch_latest() -> Result<Release, String> {
         .set("Accept", "application/vnd.github+json")
         .call();
     let r: ApiRelease = match response {
-        Ok(r) => r.into_json().map_err(|e| format!("Die Antwort von GitHub ist nicht lesbar: {e}"))?,
-        Err(ureq::Error::Status(404, _)) => return Err("Es ist noch kein Release veröffentlicht.".into()),
-        Err(ureq::Error::Status(code, _)) => return Err(format!("GitHub meldet Fehler {code}.")),
-        Err(e) => return Err(format!("Keine Verbindung zu GitHub: {e}")),
+        Ok(r) => r.into_json().map_err(|e| crate::t!("update_msg.unreadable", error = e))?,
+        Err(ureq::Error::Status(404, _)) => return Err(crate::t!("update_msg.no_release")),
+        Err(ureq::Error::Status(code, _)) => return Err(crate::t!("update_msg.http_error", code = code)),
+        Err(e) => return Err(crate::t!("update_msg.no_connection", error = e)),
     };
     Ok(Release {
         version: r.tag_name.trim_start_matches(['v', 'V']).to_string(),
