@@ -1,0 +1,32 @@
+[package]
+name = "quillpad"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+eframe = "0.31"
+egui = "0.31"
+ropey = { version = "1.6", default-features = false, features = ["simd"] }
+syntect = { version = "5", default-features = false, features = ["default-fancy"] }
+two-face = { version = "0.5", default-features = false, features = ["syntect-default-fancy"] }
+regex = "1"
+encoding_rs = "0.8"
+rfd = "0.15"
+arboard = { version = "3", features = ["wayland-data-control"] }
+ab_glyph = "0.2"
+image = { version = "0.25", default-features = false, features = ["png"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+walkdir = "2"
+dirs = "5"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+md-5 = "0.10"
+sha1 = "0.10"
+sha2 = "0.10"
+
+# Das Programm wird auch im Entwicklungsbau flüssig: Bibliotheken immer optimiert.
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3

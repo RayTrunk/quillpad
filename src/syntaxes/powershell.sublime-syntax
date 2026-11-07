@@ -1,0 +1,39 @@
+%YAML 1.2
+---
+name: PowerShell
+file_extensions: [ps1, psm1, psd1]
+scope: source.powershell
+contexts:
+  main:
+    - match: '#.*$'
+      scope: comment.line.powershell
+    - match: '<#'
+      push: block_comment
+    - match: '"'
+      push: double_quoted
+    - match: "'"
+      push: single_quoted
+    - match: '\$[\w:]+'
+      scope: variable.other.powershell
+    - match: '(?i)\b(if|else|elseif|switch|foreach|for|while|do|until|function|filter|return|break|continue|param|begin|process|end|try|catch|finally|throw|trap|class|enum|in)\b'
+      scope: keyword.control.powershell
+    - match: '(?i)-(eq|ne|gt|ge|lt|le|like|notlike|match|notmatch|and|or|not|contains|notcontains|in|notin|replace)\b'
+      scope: keyword.operator.word.powershell
+    - match: '(?i)\b[a-z]+-[a-z][a-z0-9]*\b'
+      scope: support.function.powershell
+    - match: '\b\d+(\.\d+)?\b'
+      scope: constant.numeric.powershell
+  block_comment:
+    - meta_scope: comment.block.powershell
+    - match: '#>'
+      pop: true
+  double_quoted:
+    - meta_scope: string.quoted.double.powershell
+    - match: '`.'
+      scope: constant.character.escape.powershell
+    - match: '"'
+      pop: true
+  single_quoted:
+    - meta_scope: string.quoted.single.powershell
+    - match: "'"
+      pop: true

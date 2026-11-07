@@ -1,0 +1,14 @@
+Quillpad unter Linux (64 Bit)
+
+1. Die Datei quillpad-linux in einen beliebigen Ordner kopieren.
+2. Einmal ausführbar machen:  chmod +x quillpad-linux
+3. Starten:  ./quillpad-linux  (oder mit Datei:  ./quillpad-linux meine-datei.txt)
+
+Gebraucht werden die Grafikbibliotheken, die jeder Linux-Desktop mitbringt
+(libGL/libEGL und libxkbcommon). Fehlen sie, unter Debian/Ubuntu:
+  sudo apt install libgl1 libegl1 libxkbcommon0 libxkbcommon-x11-0 libxcursor1 libxi6
+
+Für die Dialoge "Öffnen" und "Speichern" braucht es xdg-desktop-portal oder zenity.
+
+Auf sehr alten Systemen startet die fertige Datei eventuell nicht.
+Dann im Ordner app selbst bauen (dazu Rust von rustup.rs installieren):  cargo build --release

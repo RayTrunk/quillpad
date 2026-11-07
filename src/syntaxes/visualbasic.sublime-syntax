@@ -1,0 +1,25 @@
+%YAML 1.2
+---
+name: Visual Basic
+file_extensions: [vb, vbs, bas, cls, frm]
+scope: source.vb
+contexts:
+  main:
+    - match: "'.*$"
+      scope: comment.line.vb
+    - match: '(?i)\brem\b.*$'
+      scope: comment.line.vb
+    - match: '"'
+      push: quoted
+    - match: '(?i)\b(if|then|else|elseif|end|select|case|for|each|next|to|step|do|loop|while|wend|until|sub|function|class|module|dim|const|as|set|new|public|private|protected|return|exit|call|on|error|resume|with|and|or|not|true|false|nothing|imports|namespace|property|get)\b'
+      scope: keyword.control.vb
+    - match: '(?i)\b(integer|long|string|boolean|double|single|object|byte|date|variant)\b'
+      scope: storage.type.vb
+    - match: '\b\d+(\.\d+)?\b'
+      scope: constant.numeric.vb
+  quoted:
+    - meta_scope: string.quoted.double.vb
+    - match: '""'
+      scope: constant.character.escape.vb
+    - match: '"'
+      pop: true

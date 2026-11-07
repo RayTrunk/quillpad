@@ -1,0 +1,17 @@
+# Build-Ausgabe von Cargo
+/target/
+
+# Fertige Programmdateien gehören nicht ins Repository, nur die Anleitung
+/dist/*
+!/dist/LIESMICH-LINUX.txt
+
+# Bildschirmfotos aus der automatischen Prüfung (--screenshot)
+/shots/
+
+# Editor- und Systemdateien
+*.swp
+*~
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
