@@ -23,6 +23,8 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 md-5 = "0.10"
 sha1 = "0.10"
 sha2 = "0.10"
+# Nur für den Update-Hinweis: eine Abfrage bei GitHub über HTTPS (rustls).
+ureq = { version = "2", features = ["json"] }
 
 # Das Programm wird auch im Entwicklungsbau flüssig: Bibliotheken immer optimiert.
 [profile.dev]

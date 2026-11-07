@@ -505,11 +505,43 @@ impl App {
                     }
                 }
             }
+            Dialog::Update { release, auto } => {
+                let mut open_page = false;
+                center("Update verfügbar").show(ctx, |ui| {
+                    ui.set_max_width(460.0);
+                    ui.label(RichText::new(format!("{APP_NAME} {} ist verfügbar.", release.version)).strong());
+                    ui.label(format!("Du verwendest Version {}.", crate::update::VERSION));
+                    let notes = release.notes.trim();
+                    if !notes.is_empty() {
+                        ui.add_space(6.0);
+                        egui::ScrollArea::vertical().max_height(200.0).show(ui, |ui| {
+                            ui.label(notes);
+                        });
+                    }
+                    ui.add_space(6.0);
+                    ui.checkbox(auto, "Beim Start automatisch nach Updates suchen");
+                    ui.add_space(6.0);
+                    ui.horizontal(|ui| {
+                        if ui.button("Zur Download-Seite").clicked() {
+                            open_page = true;
+                            keep = false;
+                        }
+                        if ui.button("Später").clicked() || esc {
+                            keep = false;
+                        }
+                    });
+                });
+                self.settings.update_check = *auto;
+                if open_page {
+                    crate::app::open_external(std::path::Path::new(&release.url));
+                }
+            }
             Dialog::About => {
                 center(&format!("Über {APP_NAME}")).show(ctx, |ui| {
                     ui.heading(APP_NAME);
                     ui.label("Ein schneller Texteditor mit Tabs, farbigem Code und mächtiger Suche.");
                     ui.label(format!("Version {}", env!("CARGO_PKG_VERSION")));
+                    ui.hyperlink_to("Quillpad auf GitHub", crate::update::REPO_URL);
                     ui.add_space(8.0);
                     if ui.button("OK").clicked() || esc {
                         keep = false;
@@ -603,6 +635,7 @@ impl App {
                             });
                     });
                     ui.checkbox(&mut s.remember_session, "Offene Tabs und Ungespeichertes beim Beenden merken");
+                    ui.checkbox(&mut s.update_check, "Beim Start nach Updates suchen (höchstens einmal am Tag)");
                     ui.horizontal(|ui| {
                         ui.checkbox(&mut s.large_file_enabled, "Einschränkungen für große Dateien ab");
                         ui.add(egui::DragValue::new(&mut s.large_file_mb).range(1..=4096).suffix(" MB"));

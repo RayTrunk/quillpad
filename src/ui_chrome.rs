@@ -977,6 +977,8 @@ impl App {
         ui.menu_button("Hilfe", |ui| {
             ui.set_min_width(170.0);
             mi(ui, p, "Tastenkürzel …", "", Action::Shortcuts);
+            mi(ui, p, "Nach Updates suchen …", "", Action::CheckUpdates);
+            ui.separator();
             mi(ui, p, "Über Quillpad …", "", Action::About);
         });
     }

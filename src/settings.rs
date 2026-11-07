@@ -25,6 +25,10 @@ pub struct Settings {
     pub large_file_mb: u64,
     pub suppress_2gb_warning: bool,
     pub auto_reload: bool,
+    /// Beim Start höchstens einmal am Tag bei GitHub nach einer neueren Version fragen.
+    pub update_check: bool,
+    /// Zeitpunkt der letzten Suche als Unix-Sekunden.
+    pub last_update_check: i64,
 }
 
 impl Default for Settings {
@@ -46,6 +50,8 @@ impl Default for Settings {
             large_file_mb: 256,
             suppress_2gb_warning: false,
             auto_reload: false,
+            update_check: true,
+            last_update_check: 0,
         }
     }
 }

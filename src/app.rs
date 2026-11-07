@@ -117,6 +117,7 @@ pub enum Action {
     SetLanguage(Option<String>),
     Preferences,
     SetTheme(crate::theme::ThemeId),
+    CheckUpdates,
     Shortcuts,
     About,
     ColumnEditor,
@@ -142,6 +143,7 @@ pub enum Dialog {
     LossySave { doc: DocId, path: PathBuf },
     ConfirmReplaceFiles { count_hint: String },
     HugeOpen { path: PathBuf },
+    Update { release: crate::update::Release, auto: bool },
 }
 
 pub struct Shot {
@@ -192,6 +194,10 @@ pub struct App {
     pub close_confirmed: bool,
     pub menu_width: f32,
     pub inbox: Option<std::sync::mpsc::Receiver<Vec<PathBuf>>>,
+    /// Laufende Suche nach Updates; true = vom Menü ausgelöst, dann gibt es immer eine Antwort.
+    update_rx: Option<(std::sync::mpsc::Receiver<crate::update::Outcome>, bool)>,
+    /// Gefundene neuere Version, die gezeigt wird, sobald kein anderer Dialog offen ist.
+    update_found: Option<crate::update::Release>,
     pub test_clicks: Vec<egui::Pos2>,
     last_title: String,
     last_backup: Instant,
@@ -248,6 +254,8 @@ impl App {
             last_backup: Instant::now(),
             last_watch: Instant::now(),
             session_dirty_probe: 0,
+            update_rx: None,
+            update_found: None,
         };
         app.restore_session();
         for f in files {
@@ -257,6 +265,11 @@ impl App {
             app.new_doc();
         }
         app.show_folder = app.settings.workspace.is_some();
+        // Nur im echten Betrieb (mit Einstellungsordner), nicht in Tests und Bildschirmfotos.
+        let due = crate::update::now_secs() - app.settings.last_update_check >= crate::update::AUTO_INTERVAL_SECS;
+        if app.storage.is_some() && app.settings.update_check && due {
+            app.start_update_check(false);
+        }
         app
     }
 
@@ -402,6 +415,46 @@ impl App {
 
     pub fn message(&mut self, title: &str, text: impl Into<String>) {
         self.dialog = Some(Dialog::Message { title: title.into(), text: text.into() });
+    }
+
+    /// Startet die Suche nach einer neueren Version im Hintergrund.
+    pub fn start_update_check(&mut self, manual: bool) {
+        if self.update_rx.is_some() {
+            return;
+        }
+        self.settings.last_update_check = crate::update::now_secs();
+        self.update_rx = Some((crate::update::check_in_background(self.ctx.clone()), manual));
+    }
+
+    fn poll_update(&mut self) {
+        use crate::update::Outcome;
+        use std::sync::mpsc::TryRecvError;
+        if let Some((rx, manual)) = &self.update_rx {
+            let manual = *manual;
+            match rx.try_recv() {
+                Ok(outcome) => {
+                    self.update_rx = None;
+                    match outcome {
+                        Outcome::Newer(r) => self.update_found = Some(r),
+                        Outcome::UpToDate if manual => {
+                            self.message("Nach Updates suchen", format!("Quillpad {} ist die neueste Version.", crate::update::VERSION));
+                        }
+                        Outcome::Failed(e) if manual => {
+                            self.message("Nach Updates suchen", format!("Die Suche nach Updates hat nicht geklappt.\n{e}"));
+                        }
+                        // Automatische Suche: ohne Neuigkeit kein Dialog.
+                        _ => {}
+                    }
+                }
+                Err(TryRecvError::Empty) => {}
+                Err(TryRecvError::Disconnected) => self.update_rx = None,
+            }
+        }
+        if self.dialog.is_none() {
+            if let Some(release) = self.update_found.take() {
+                self.dialog = Some(Dialog::Update { release, auto: self.settings.update_check });
+            }
+        }
     }
 
     pub fn focus_editor(&mut self) {
@@ -1321,6 +1374,7 @@ impl App {
             }
             Action::Shortcuts => self.dialog = Some(Dialog::Shortcuts),
             Action::About => self.dialog = Some(Dialog::About),
+            Action::CheckUpdates => self.start_update_check(true),
             Action::ColumnEditor => {
                 self.dialog = Some(Dialog::Column {
                     text: String::new(),
@@ -1400,6 +1454,7 @@ impl App {
         self.draw_main(ctx);
         self.draw_dialogs(ctx);
         self.poll_find_job(ctx);
+        self.poll_update();
         self.run_pending(ctx);
         if self.storage.is_some() {
             self.timers();
