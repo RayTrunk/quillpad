@@ -89,7 +89,7 @@ fn temp_dir(tag: &str) -> std::path::PathBuf {
 fn starts_with_one_empty_new_document() {
     let r = Rig::new();
     assert_eq!(r.app.panes[0].tabs.len(), 1);
-    assert_eq!(r.app.cur_doc().title, "neu 1");
+    assert_eq!(r.app.cur_doc().title, "Unbenannt 1");
     assert_eq!(r.text(), "");
     assert!(!r.app.cur_doc().is_modified());
 }
@@ -222,13 +222,13 @@ fn tabs_new_switch_close() {
     let mut r = Rig::new();
     r.key(Key::N, Modifiers::CTRL);
     assert_eq!(r.app.panes[0].tabs.len(), 2);
-    assert_eq!(r.app.cur_doc().title, "neu 2");
+    assert_eq!(r.app.cur_doc().title, "Unbenannt 2");
     r.typed("x");
     r.key(Key::Tab, Modifiers::CTRL);
-    assert_eq!(r.app.cur_doc().title, "neu 1");
+    assert_eq!(r.app.cur_doc().title, "Unbenannt 1");
     r.key(Key::W, Modifiers::CTRL);
     assert_eq!(r.app.panes[0].tabs.len(), 1);
-    assert_eq!(r.app.cur_doc().title, "neu 2");
+    assert_eq!(r.app.cur_doc().title, "Unbenannt 2");
     // Geändert: Schließen fragt nach und passiert noch nicht.
     r.key(Key::W, Modifiers::CTRL);
     assert!(matches!(r.app.dialog, Some(crate::app::Dialog::ConfirmClose { .. })));
@@ -265,7 +265,7 @@ fn open_edit_save_keeps_encoding_and_line_endings() {
     let mut r = Rig::new();
     assert!(r.app.open_path(&f).is_some());
     r.frames(2);
-    assert_eq!(r.app.panes[0].tabs.len(), 1, "leeres neu 1 wird ersetzt");
+    assert_eq!(r.app.panes[0].tabs.len(), 1, "leeres Unbenannt 1 wird ersetzt");
     assert_eq!(r.app.cur_doc().enc, Enc::Ansi);
     assert_eq!(r.text(), "# Größe\nprint(1)\n");
     assert_eq!(r.app.cur_doc().hl.language.as_deref(), Some("Python"));
@@ -680,7 +680,8 @@ fn print_page_contains_escaped_colored_text() {
     let html = crate::app::print_html(r.app.docs.get_mut(&id).unwrap());
     assert!(html.contains("window.print()"));
     assert!(html.contains("a&lt;b"));
-    assert!(html.contains("color:#008000"));
+    let comment = format!("color:#{:06x}", crate::theme::syntax(crate::theme::ThemeId::Light).comment);
+    assert!(html.to_lowercase().contains(&comment), "Kommentar in der Farbe des Designs");
     assert!(!html.contains("a<b"));
 }
 

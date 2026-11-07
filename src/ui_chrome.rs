@@ -8,7 +8,7 @@ use crate::icons::{self, Icon};
 use crate::theme::{self, ThemeId};
 use crate::textops::CaseKind;
 use crate::ui_find::FindTab;
-use egui::{pos2, vec2, Align2, Button, Color32, Context, FontData, FontDefinitions, FontFamily, FontId, Key, Rect, Sense, Stroke, StrokeKind, Ui, UiBuilder};
+use egui::{pos2, vec2, Align2, Button, Color32, Context, FontData, FontDefinitions, FontFamily, FontId, Key, Rect, RichText, Sense, Stroke, StrokeKind, Ui, UiBuilder};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
@@ -214,7 +214,7 @@ pub fn shortcuts() -> Vec<Shortcut> {
         sc!("Strg+Umschalt+K", "Kommentar entfernen", true, true, false, K, true, A::Cmd(Cmd::Comment(Some(false)))),
         sc!("Strg+Umschalt+Q", "Blockkommentar", true, true, false, Q, true, A::Cmd(Cmd::BlockComment)),
         sc!("Strg+Leertaste", "Wort vervollständigen", true, false, false, Space, true, A::Autocomplete),
-        sc!("Alt+C", "Spalteneditor", false, false, true, C, true, A::ColumnEditor),
+        sc!("Alt+C", "Zahlenfolge einfügen", false, false, true, C, true, A::ColumnEditor),
         sc!("Strg+F", "Suchen", true, false, false, F, false, A::ShowFind(FindTab::Find)),
         sc!("Strg+H", "Ersetzen", true, false, false, H, false, A::ShowFind(FindTab::Replace)),
         sc!("Strg+Umschalt+F", "In Dateien suchen", true, true, false, F, false, A::ShowFind(FindTab::Files)),
@@ -502,9 +502,10 @@ impl App {
             .collect();
         let widths: Vec<f32> = names
             .iter()
-            .map(|(n, _, _, _)| {
+            .map(|(n, modified, read_only, _)| {
                 let w = ctx.fonts(|f| f.layout_no_wrap(n.clone(), font.clone(), Color32::WHITE).size().x);
-                (w + 52.0).max(114.0)
+                let marks = if *read_only { 16.0 } else { 0.0 } + if *modified { 13.0 } else { 0.0 };
+                (w + marks + 40.0).max(96.0)
             })
             .collect();
         let total: f32 = widths.iter().sum::<f32>() + widths.len() as f32 * 2.0;
@@ -553,16 +554,26 @@ impl App {
                 tp.line_segment([pos2(r, t), pos2(r, b)], Stroke::new(1.0, theme::W98_DARK));
                 tp.line_segment([pos2(r - 1.0, t + 1.0), pos2(r - 1.0, b)], Stroke::new(1.0, theme::W98_SHADOW));
             } else if is_active {
-                tp.rect_filled(Rect::from_min_size(tr.min, vec2(w, 3.0)), 0.0, c.accent);
+                // Akzent unten in der Farbe des Designs.
+                tp.rect_filled(Rect::from_min_max(pos2(tr.left(), tr.bottom() - 2.0), tr.max), 0.0, c.accent);
             }
-            let icon = Rect::from_min_size(pos2(tr.left() + 4.0, tr.center().y - 9.0), vec2(18.0, 18.0));
-            icons::tab_floppy(&tp, icon, *modified, *read_only, retro);
+            let text_col = if is_active { c.text } else { c.tab_text };
+            let mut tx = tr.left() + 10.0;
+            if *read_only {
+                let lock = Rect::from_min_size(pos2(tx - 2.0, tr.center().y - 8.0), vec2(16.0, 16.0));
+                icons::paint_lock(&tp, lock, c.text_dim);
+                tx += 16.0;
+            }
+            if *modified {
+                tp.circle_filled(pos2(tx + 3.5, tr.center().y + 0.5), 3.5, if retro { text_col } else { c.accent });
+                tx += 13.0;
+            }
             tp.text(
-                pos2(tr.left() + 26.0, tr.center().y),
+                pos2(tx, tr.center().y),
                 Align2::LEFT_CENTER,
                 name,
                 font.clone(),
-                if is_active { c.text } else { c.tab_text },
+                text_col,
             );
             let close = Rect::from_center_size(pos2(tr.right() - 12.0, tr.center().y), vec2(16.0, 16.0));
             let over_close = pointer.is_some_and(|p| close.contains(p));
@@ -634,6 +645,10 @@ impl App {
                 mi(ui, pending, "In anderer Ansicht öffnen", "", Action::CloneToOther);
             });
         }
+        let free = Rect::from_min_max(pos2(x.max(bar.left()), rect.top()), bar.max);
+        if free.width() > 4.0 && ui.interact(free, ui.id().with(("tabs_free", pane)), Sense::click()).double_clicked() {
+            self.pending.push(Action::New);
+        }
         if overflow {
             let bw = 22.0;
             let right = rect.right();
@@ -679,7 +694,7 @@ impl App {
     }
 
     fn measure_menus(&self, ctx: &Context) -> f32 {
-        let names = ["Datei", "Bearbeiten", "Suchen", "Ansicht", "Codierung", "Sprache", "Einstellungen", "Werkzeuge", "Fenster", "?", "+"];
+        let names = ["Datei", "Bearbeiten", "Ansicht", "Suchen", "Dokument", "Werkzeuge", "Hilfe"];
         let font = FontId::proportional(if self.settings.theme.retro() { 13.0 } else { 14.0 });
         names
             .iter()
@@ -753,11 +768,14 @@ impl App {
             ui.set_min_width(250.0);
             mi(ui, p, "Neu", "Strg+N", Action::New);
             mi(ui, p, "Öffnen …", "Strg+O", Action::Open);
-            ui.menu_button("Enthaltenden Ordner öffnen", |ui| {
-                let (files, shell) = if cfg!(windows) { ("Explorer", "Eingabeaufforderung") } else { ("Dateimanager", "Terminal") };
-                mi_en(ui, p, files, "", doc_has_path, Action::OpenExplorer);
-                mi_en(ui, p, shell, "", doc_has_path, Action::OpenTerminal);
-                mi(ui, p, "Ordner als Arbeitsbereich …", "", Action::PickWorkspace);
+            ui.menu_button("Zuletzt geöffnet", |ui| {
+                ui.set_min_width(300.0);
+                if recent.is_empty() {
+                    ui.add_enabled(false, Button::new("(noch keine)"));
+                }
+                for r in &recent {
+                    mi(ui, p, r, "", Action::OpenPath(r.into()));
+                }
             });
             mi_en(ui, p, "Neu laden", "", doc_has_path, Action::Reload);
             ui.separator();
@@ -771,16 +789,13 @@ impl App {
             mi(ui, p, "Alle schließen", "Strg+Umschalt+W", Action::CloseAll);
             mi(ui, p, "Alle anderen schließen", "", Action::CloseOthers);
             ui.separator();
+            let (files, shell) = if cfg!(windows) { ("Im Explorer zeigen", "Eingabeaufforderung hier öffnen") } else { ("Im Dateimanager zeigen", "Terminal hier öffnen") };
+            mi_en(ui, p, files, "", doc_has_path, Action::OpenExplorer);
+            mi_en(ui, p, shell, "", doc_has_path, Action::OpenTerminal);
+            mi(ui, p, "Projektordner wählen …", "", Action::PickWorkspace);
             mi(ui, p, "Drucken …", "Strg+P", Action::Print);
-            ui.menu_button("Zuletzt geöffnet", |ui| {
-                ui.set_min_width(300.0);
-                if recent.is_empty() {
-                    ui.add_enabled(false, Button::new("(noch keine)"));
-                }
-                for r in &recent {
-                    mi(ui, p, r, "", Action::OpenPath(r.into()));
-                }
-            });
+            ui.separator();
+            mi(ui, p, "Einstellungen …", "", Action::Preferences);
             ui.separator();
             mi(ui, p, "Beenden", "Alt+F4", Action::Exit);
         });
@@ -796,21 +811,6 @@ impl App {
             mi(ui, p, "Löschen", "Entf", Action::Cmd(Cmd::DeleteSelection));
             mi(ui, p, "Alles markieren", "Strg+A", Action::Cmd(Cmd::SelectAll));
             ui.separator();
-            ui.menu_button("In Zwischenablage", |ui| {
-                mi(ui, p, "Vollständiger Dateipfad", "", Action::CopyFullPath);
-                mi(ui, p, "Dateiname", "", Action::CopyFileName);
-                mi(ui, p, "Ordnerpfad", "", Action::CopyDirPath);
-            });
-            ui.menu_button("Einzug", |ui| {
-                mi(ui, p, "Einzug vergrößern", "Tab", Action::Cmd(Cmd::Indent));
-                mi(ui, p, "Einzug verkleinern", "Umschalt+Tab", Action::Cmd(Cmd::Outdent));
-            });
-            ui.menu_button("Groß-/Kleinschreibung", |ui| {
-                mi(ui, p, "GROSSBUCHSTABEN", "Strg+Umschalt+U", Action::Cmd(Cmd::Case(CaseKind::Upper)));
-                mi(ui, p, "Kleinbuchstaben", "Strg+U", Action::Cmd(Cmd::Case(CaseKind::Lower)));
-                mi(ui, p, "Wortanfänge Groß", "", Action::Cmd(Cmd::Case(CaseKind::Proper)));
-                mi(ui, p, "iNVERTIEREN", "", Action::Cmd(Cmd::Case(CaseKind::Invert)));
-            });
             ui.menu_button("Zeilen", |ui| {
                 ui.set_min_width(240.0);
                 mi(ui, p, "Zeile duplizieren", "Strg+D", Action::Cmd(Cmd::DuplicateLines));
@@ -827,6 +827,22 @@ impl App {
                 mi(ui, p, "Leere Zeilen entfernen", "", Action::Cmd(Cmd::RemoveEmptyLines { blank_too: false }));
                 mi(ui, p, "Leere Zeilen und Leerzeilen mit Leerraum entfernen", "", Action::Cmd(Cmd::RemoveEmptyLines { blank_too: true }));
             });
+            ui.menu_button("Groß-/Kleinschreibung", |ui| {
+                mi(ui, p, "GROSSBUCHSTABEN", "Strg+Umschalt+U", Action::Cmd(Cmd::Case(CaseKind::Upper)));
+                mi(ui, p, "Kleinbuchstaben", "Strg+U", Action::Cmd(Cmd::Case(CaseKind::Lower)));
+                mi(ui, p, "Wortanfänge Groß", "", Action::Cmd(Cmd::Case(CaseKind::Proper)));
+                mi(ui, p, "iNVERTIEREN", "", Action::Cmd(Cmd::Case(CaseKind::Invert)));
+            });
+            ui.menu_button("Einzug", |ui| {
+                mi(ui, p, "Einzug vergrößern", "Tab", Action::Cmd(Cmd::Indent));
+                mi(ui, p, "Einzug verkleinern", "Umschalt+Tab", Action::Cmd(Cmd::Outdent));
+            });
+            ui.menu_button("Leerraum", |ui| {
+                mi(ui, p, "Leerraum am Zeilenende entfernen", "", Action::Cmd(Cmd::TrimTrailing));
+                mi(ui, p, "Leerraum am Zeilenanfang entfernen", "", Action::Cmd(Cmd::TrimLeading));
+                mi(ui, p, "Tabs in Leerzeichen", "", Action::Cmd(Cmd::TabsToSpaces));
+                mi(ui, p, "Führende Leerzeichen in Tabs", "", Action::Cmd(Cmd::LeadingSpacesToTabs));
+            });
             ui.menu_button("Kommentar", |ui| {
                 ui.set_min_width(240.0);
                 mi(ui, p, "Zeilenkommentar umschalten", "Strg+Q", Action::Cmd(Cmd::Comment(None)));
@@ -834,41 +850,85 @@ impl App {
                 mi(ui, p, "Kommentar entfernen", "Strg+Umschalt+K", Action::Cmd(Cmd::Comment(Some(false))));
                 mi(ui, p, "Blockkommentar", "Strg+Umschalt+Q", Action::Cmd(Cmd::BlockComment));
             });
-            mi(ui, p, "Wort vervollständigen", "Strg+Leertaste", Action::Autocomplete);
-            ui.menu_button("Leerraum", |ui| {
-                mi(ui, p, "Leerraum am Zeilenende entfernen", "", Action::Cmd(Cmd::TrimTrailing));
-                mi(ui, p, "Leerraum am Zeilenanfang entfernen", "", Action::Cmd(Cmd::TrimLeading));
-                mi(ui, p, "Tabs in Leerzeichen", "", Action::Cmd(Cmd::TabsToSpaces));
-                mi(ui, p, "Führende Leerzeichen in Tabs", "", Action::Cmd(Cmd::LeadingSpacesToTabs));
-            });
-            ui.menu_button("Zeilenende umwandeln", |ui| {
-                check(ui, p, Eol::Crlf.label(), cur_eol == Eol::Crlf, "", Action::SetEol(Eol::Crlf));
-                check(ui, p, Eol::Lf.label(), cur_eol == Eol::Lf, "", Action::SetEol(Eol::Lf));
-                check(ui, p, Eol::Cr.label(), cur_eol == Eol::Cr, "", Action::SetEol(Eol::Cr));
+            ui.menu_button("In Zwischenablage", |ui| {
+                mi(ui, p, "Vollständiger Dateipfad", "", Action::CopyFullPath);
+                mi(ui, p, "Dateiname", "", Action::CopyFileName);
+                mi(ui, p, "Ordnerpfad", "", Action::CopyDirPath);
             });
             ui.separator();
-            mi(ui, p, "Spalteneditor …", "Alt+C", Action::ColumnEditor);
+            mi(ui, p, "Wort vervollständigen", "Strg+Leertaste", Action::Autocomplete);
+            mi(ui, p, "Zahlenfolge einfügen …", "Alt+C", Action::ColumnEditor);
             mi(ui, p, "Datum und Uhrzeit einfügen", "", Action::InsertDateTime);
-            check(ui, p, "Schreibschutz", read_only, "", Action::ToggleReadOnly);
+        });
+
+        ui.menu_button("Ansicht", |ui| {
+            ui.set_min_width(250.0);
+            ui.menu_button("Design", |ui| {
+                ui.set_min_width(170.0);
+                for t in ThemeId::ALL {
+                    check(ui, p, t.label(), cur_theme == t, "", Action::SetTheme(t));
+                }
+            });
+            ui.menu_button("Zoom", |ui| {
+                mi(ui, p, "Vergrößern", "Strg+Plus", Action::ZoomIn);
+                mi(ui, p, "Verkleinern", "Strg+Minus", Action::ZoomOut);
+                mi(ui, p, "Normale Größe", "Strg+0", Action::ZoomReset);
+            });
+            check(ui, p, "Vollbild", fullscreen, "F11", Action::ToggleFullscreen);
+            check(ui, p, "Immer im Vordergrund", on_top, "", Action::ToggleOnTop);
+            ui.separator();
+            check(ui, p, "Zeilenumbruch", o.wrap, "", Action::ToggleWrap);
+            check(ui, p, "Zeilennummern", o.line_numbers, "", Action::ToggleLineNumbers);
+            check(ui, p, "Einzugslinien", o.indent_guides, "", Action::ToggleGuides);
+            ui.menu_button("Unsichtbare Zeichen", |ui| {
+                check(ui, p, "Leerzeichen und Tabs", o.show_ws, "", Action::ToggleWs);
+                check(ui, p, "Zeilenenden", o.show_eol, "", Action::ToggleEol);
+                check(ui, p, "Alle", o.show_ws && o.show_eol, "", Action::ToggleAllSymbols);
+            });
+            ui.menu_button("Einklappen", |ui| {
+                ui.set_min_width(240.0);
+                mi(ui, p, "Aktuelle Ebene umschalten", "Strg+Alt+F", Action::FoldCurrent);
+                mi(ui, p, "Alles einklappen", "Alt+0", Action::FoldAll);
+                mi(ui, p, "Alles ausklappen", "Alt+Umschalt+0", Action::UnfoldAll);
+            });
+            ui.separator();
+            check(ui, p, "Übersicht", show_map, "", Action::ToggleMap);
+            check(ui, p, "Gliederung", show_funcs, "", Action::ToggleFuncs);
+            check(ui, p, "Projektordner", show_folder, "", Action::ToggleFolder);
+            ui.separator();
+            ui.menu_button("Geteilte Ansicht", |ui| {
+                ui.set_min_width(230.0);
+                mi(ui, p, "Tab auf die andere Seite", "", Action::MoveToOther);
+                mi(ui, p, "Tab auf beiden Seiten zeigen", "", Action::CloneToOther);
+                ui.separator();
+                check(ui, p, "Senkrecht gemeinsam scrollen", sync_v, "", Action::ToggleSyncV);
+                check(ui, p, "Waagerecht gemeinsam scrollen", sync_h, "", Action::ToggleSyncH);
+            });
+            ui.menu_button("Tabs", |ui| {
+                ui.set_min_width(190.0);
+                mi(ui, p, "Nächster Tab", "Strg+Tab", Action::NextTab);
+                mi(ui, p, "Vorheriger Tab", "Strg+Umschalt+Tab", Action::PrevTab);
+                ui.separator();
+                for (pane, i, name) in &doc_names {
+                    mi(ui, p, name, "", Action::ActivateTab(*pane, *i));
+                }
+            });
         });
 
         ui.menu_button("Suchen", |ui| {
             ui.set_min_width(250.0);
             mi(ui, p, "Suchen …", "Strg+F", Action::ShowFind(FindTab::Find));
-            mi(ui, p, "In Dateien suchen …", "Strg+Umschalt+F", Action::ShowFind(FindTab::Files));
+            mi(ui, p, "Ersetzen …", "Strg+H", Action::ShowFind(FindTab::Replace));
             mi(ui, p, "Weitersuchen", "F3", Action::FindNext);
             mi(ui, p, "Rückwärts suchen", "Umschalt+F3", Action::FindPrev);
-            mi(ui, p, "Markierung weitersuchen", "Strg+F3", Action::FindSelectedNext);
-            mi(ui, p, "Ersetzen …", "Strg+H", Action::ShowFind(FindTab::Replace));
+            mi(ui, p, "Markierten Text suchen", "Strg+F3", Action::FindSelectedNext);
+            mi(ui, p, "In Dateien suchen …", "Strg+Umschalt+F", Action::ShowFind(FindTab::Files));
             ui.separator();
-            mi(ui, p, "Gehe zu …", "Strg+G", Action::GoToDialog);
-            mi(ui, p, "Passende Klammer", "Strg+B", Action::MatchBrace);
-            ui.separator();
-            mi(ui, p, "Markieren …", "Strg+M", Action::ShowFind(FindTab::Mark));
-            mi(ui, p, "Alle Markierungen entfernen", "", Action::ClearMarks);
+            mi(ui, p, "Treffer hervorheben …", "Strg+M", Action::ShowFind(FindTab::Mark));
+            mi(ui, p, "Hervorhebungen entfernen", "", Action::ClearMarks);
             ui.menu_button("Lesezeichen", |ui| {
                 ui.set_min_width(230.0);
-                mi(ui, p, "Umschalten", "Strg+F2", Action::BookmarkToggle);
+                mi(ui, p, "Setzen/entfernen", "Strg+F2", Action::BookmarkToggle);
                 mi(ui, p, "Nächstes", "F2", Action::BookmarkNext);
                 mi(ui, p, "Vorheriges", "Umschalt+F2", Action::BookmarkPrev);
                 mi(ui, p, "Alle entfernen", "", Action::BookmarksClear);
@@ -877,127 +937,98 @@ impl App {
                 mi(ui, p, "Zeilen mit Lesezeichen kopieren", "", Action::BookmarksCopyLines);
                 mi(ui, p, "Zeilen mit Lesezeichen löschen", "", Action::BookmarksDeleteLines);
             });
+            ui.separator();
+            mi(ui, p, "Gehe zu …", "Strg+G", Action::GoToDialog);
+            mi(ui, p, "Zur passenden Klammer", "Strg+B", Action::MatchBrace);
         });
 
-        ui.menu_button("Ansicht", |ui| {
-            ui.set_min_width(250.0);
-            check(ui, p, "Immer im Vordergrund", on_top, "", Action::ToggleOnTop);
-            check(ui, p, "Vollbild", fullscreen, "F11", Action::ToggleFullscreen);
-            ui.separator();
-            check(ui, p, "Zeilenumbruch", o.wrap, "", Action::ToggleWrap);
-            ui.menu_button("Symbole anzeigen", |ui| {
-                check(ui, p, "Leerzeichen und Tabs", o.show_ws, "", Action::ToggleWs);
-                check(ui, p, "Zeilenenden", o.show_eol, "", Action::ToggleEol);
-                check(ui, p, "Alle Zeichen", o.show_ws && o.show_eol, "", Action::ToggleAllSymbols);
-            });
-            check(ui, p, "Einzugslinien", o.indent_guides, "", Action::ToggleGuides);
-            check(ui, p, "Zeilennummern", o.line_numbers, "", Action::ToggleLineNumbers);
-            ui.menu_button("Zoom", |ui| {
-                mi(ui, p, "Vergrößern", "Strg+Plus", Action::ZoomIn);
-                mi(ui, p, "Verkleinern", "Strg+Minus", Action::ZoomOut);
-                mi(ui, p, "Normale Größe", "Strg+0", Action::ZoomReset);
-            });
-            ui.separator();
-            mi(ui, p, "Alles einklappen", "Alt+0", Action::FoldAll);
-            mi(ui, p, "Alles ausklappen", "Alt+Umschalt+0", Action::UnfoldAll);
-            mi(ui, p, "Aktuelle Ebene ein-/ausklappen", "Strg+Alt+F", Action::FoldCurrent);
-            ui.separator();
-            mi(ui, p, "In andere Ansicht verschieben", "", Action::MoveToOther);
-            mi(ui, p, "In anderer Ansicht öffnen", "", Action::CloneToOther);
-            check(ui, p, "Vertikal synchron scrollen", sync_v, "", Action::ToggleSyncV);
-            check(ui, p, "Horizontal synchron scrollen", sync_h, "", Action::ToggleSyncH);
-            ui.separator();
-            check(ui, p, "Dokumentkarte", show_map, "", Action::ToggleMap);
-            check(ui, p, "Funktionsliste", show_funcs, "", Action::ToggleFuncs);
-            check(ui, p, "Ordner als Arbeitsbereich", show_folder, "", Action::ToggleFolder);
-            check(ui, p, "Datei überwachen (fortlaufend)", monitoring, "", Action::ToggleMonitor);
-            ui.separator();
-            mi(ui, p, "Zusammenfassung …", "", Action::Summary);
-        });
-
-        ui.menu_button("Codierung", |ui| {
+        ui.menu_button("Dokument", |ui| {
             ui.set_min_width(230.0);
-            for e in [Enc::Ansi, Enc::Utf8, Enc::Utf8Bom, Enc::Utf16Be, Enc::Utf16Le] {
-                check(ui, p, &format!("Als {} lesen", e.label()), cur_enc == e, "", Action::Encode(e));
-            }
-            ui.menu_button("Zeichensätze", |ui| {
-                let list = fileio::legacy_list();
-                let mut groups: Vec<&str> = list.iter().map(|x| x.0).collect();
-                groups.dedup();
-                for g in groups {
-                    ui.menu_button(g, |ui| {
-                        for (_, name, enc) in list.iter().filter(|x| x.0 == g) {
-                            let e = Enc::Legacy(enc);
-                            check(ui, p, name, cur_enc == e, "", Action::Encode(e));
-                        }
-                    });
+            ui.menu_button("Sprache", |ui| language_menu(ui, p, cur_lang.as_deref()));
+            ui.menu_button("Kodierung", |ui| encoding_menu(ui, p, cur_enc));
+            ui.menu_button("Umwandeln in", |ui| {
+                ui.set_min_width(200.0);
+                for e in [Enc::Utf8, Enc::Utf8Bom, Enc::Utf16Le, Enc::Utf16Be, Enc::Ansi] {
+                    mi(ui, p, e.label().as_str(), "", Action::Convert(e));
                 }
             });
+            ui.menu_button("Zeilenende", |ui| eol_menu(ui, p, cur_eol));
             ui.separator();
-            for e in [Enc::Ansi, Enc::Utf8, Enc::Utf8Bom, Enc::Utf16Be, Enc::Utf16Le] {
-                mi(ui, p, &format!("Umwandeln in {}", e.label()), "", Action::Convert(e));
-            }
-        });
-
-        ui.menu_button("Sprache", |ui| {
-            ui.set_min_width(170.0);
-            check(ui, p, "Normaler Text", cur_lang.is_none(), "", Action::SetLanguage(None));
+            check(ui, p, "Schreibschutz", read_only, "", Action::ToggleReadOnly);
+            check(ui, p, "Änderungen fortlaufend anzeigen", monitoring, "", Action::ToggleMonitor);
             ui.separator();
-            let names = &highlight::engine().names;
-            let mut letters: Vec<char> = names.iter().filter_map(|n| n.chars().next()).map(|c| c.to_ascii_uppercase()).collect();
-            letters.dedup();
-            for l in letters {
-                ui.menu_button(l.to_string(), |ui| {
-                    ui.set_min_width(170.0);
-                    for n in names.iter().filter(|n| n.chars().next().map(|c| c.to_ascii_uppercase()) == Some(l)) {
-                        check(ui, p, n, cur_lang.as_deref() == Some(n.as_str()), "", Action::SetLanguage(Some(n.clone())));
-                    }
-                });
-            }
-        });
-
-        ui.menu_button("Einstellungen", |ui| {
-            ui.set_min_width(180.0);
-            mi(ui, p, "Optionen …", "", Action::Preferences);
-            ui.menu_button("Design", |ui| {
-                ui.set_min_width(170.0);
-                for t in ThemeId::ALL {
-                    check(ui, p, t.label(), cur_theme == t, "", Action::SetTheme(t));
-                }
-            });
-            mi(ui, p, "Tastenkürzel …", "", Action::Shortcuts);
+            mi(ui, p, "Dokumentinfo …", "", Action::Summary);
         });
 
         ui.menu_button("Werkzeuge", |ui| {
             ui.set_min_width(180.0);
-            ui.label("Prüfsumme von Markierung oder Text");
-            mi(ui, p, "MD5", "", Action::Hash(HashKind::Md5));
-            mi(ui, p, "SHA-1", "", Action::Hash(HashKind::Sha1));
-            mi(ui, p, "SHA-256", "", Action::Hash(HashKind::Sha256));
-            mi(ui, p, "SHA-512", "", Action::Hash(HashKind::Sha512));
+            ui.menu_button("Prüfsumme", |ui| {
+                ui.set_min_width(160.0);
+                ui.label(RichText::new("von Markierung oder Text").small().weak());
+                mi(ui, p, "MD5", "", Action::Hash(HashKind::Md5));
+                mi(ui, p, "SHA-1", "", Action::Hash(HashKind::Sha1));
+                mi(ui, p, "SHA-256", "", Action::Hash(HashKind::Sha256));
+                mi(ui, p, "SHA-512", "", Action::Hash(HashKind::Sha512));
+            });
         });
 
-        ui.menu_button("Fenster", |ui| {
-            ui.set_min_width(190.0);
-            mi(ui, p, "Nächster Tab", "Strg+Tab", Action::NextTab);
-            mi(ui, p, "Vorheriger Tab", "Strg+Umschalt+Tab", Action::PrevTab);
-            ui.separator();
-            for (pane, i, name) in &doc_names {
-                mi(ui, p, name, "", Action::ActivateTab(*pane, *i));
-            }
-        });
-
-        ui.menu_button("?", |ui| {
+        ui.menu_button("Hilfe", |ui| {
             ui.set_min_width(170.0);
             mi(ui, p, "Tastenkürzel …", "", Action::Shortcuts);
             mi(ui, p, "Über Quillpad …", "", Action::About);
         });
-
-        if ui.add(Button::new("+").frame(false)).on_hover_text("Neues Dokument").clicked() {
-            p.push(Action::New);
-        }
     }
+}
 
+/// Auswahl der Sprache, nach Anfangsbuchstaben gruppiert. Für Menü und Statuszeile.
+fn language_menu(ui: &mut Ui, p: &mut Vec<Action>, cur: Option<&str>) {
+    ui.set_min_width(170.0);
+    check(ui, p, "Nur Text", cur.is_none(), "", Action::SetLanguage(None));
+    ui.separator();
+    let names = &highlight::engine().names;
+    let mut letters: Vec<char> = names.iter().filter_map(|n| n.chars().next()).map(|c| c.to_ascii_uppercase()).collect();
+    letters.dedup();
+    for l in letters {
+        ui.menu_button(l.to_string(), |ui| {
+            ui.set_min_width(170.0);
+            for n in names.iter().filter(|n| n.chars().next().map(|c| c.to_ascii_uppercase()) == Some(l)) {
+                check(ui, p, n, cur == Some(n.as_str()), "", Action::SetLanguage(Some(n.clone())));
+            }
+        });
+    }
+}
+
+/// Kodierung, mit der die Datei gelesen wird. Für Menü und Statuszeile.
+fn encoding_menu(ui: &mut Ui, p: &mut Vec<Action>, cur: Enc) {
+    ui.set_min_width(200.0);
+    ui.label(RichText::new("Datei neu einlesen als").small().weak());
+    for e in [Enc::Utf8, Enc::Utf8Bom, Enc::Utf16Le, Enc::Utf16Be, Enc::Ansi] {
+        check(ui, p, e.label().as_str(), cur == e, "", Action::Encode(e));
+    }
+    ui.menu_button("Weitere Zeichensätze", |ui| {
+        let list = fileio::legacy_list();
+        let mut groups: Vec<&str> = list.iter().map(|x| x.0).collect();
+        groups.dedup();
+        for g in groups {
+            ui.menu_button(g, |ui| {
+                for (_, name, enc) in list.iter().filter(|x| x.0 == g) {
+                    let e = Enc::Legacy(enc);
+                    check(ui, p, name, cur == e, "", Action::Encode(e));
+                }
+            });
+        }
+    });
+}
+
+/// Zeilenende des Dokuments. Für Menü und Statuszeile.
+fn eol_menu(ui: &mut Ui, p: &mut Vec<Action>, cur: Eol) {
+    ui.set_min_width(170.0);
+    for e in [Eol::Crlf, Eol::Lf, Eol::Cr] {
+        check(ui, p, e.label(), cur == e, "", Action::SetEol(e));
+    }
+}
+
+impl App {
     fn toolbar(&mut self, ui: &mut Ui) {
         ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
         let (modified, undo_ok, redo_ok, has_sel, any_modified, read_only, monitor) = {
@@ -1074,8 +1105,8 @@ impl App {
             tool(ui, Icon::ZoomIn, "Vergrößern", true, false, Action::ZoomIn, p);
             tool(ui, Icon::ZoomOut, "Verkleinern", true, false, Action::ZoomOut, p);
             sep(ui);
-            tool(ui, Icon::SyncV, "Vertikal synchron scrollen", split, sync_v, Action::ToggleSyncV, p);
-            tool(ui, Icon::SyncH, "Horizontal synchron scrollen", split, sync_h, Action::ToggleSyncH, p);
+            tool(ui, Icon::SyncV, "Senkrecht gemeinsam scrollen", split, sync_v, Action::ToggleSyncV, p);
+            tool(ui, Icon::SyncH, "Waagerecht gemeinsam scrollen", split, sync_h, Action::ToggleSyncH, p);
             sep(ui);
             tool(ui, Icon::Wrap, "Zeilenumbruch", true, o.wrap, Action::ToggleWrap, p);
             tool(ui, Icon::ShowAll, "Alle Zeichen anzeigen", true, o.show_ws && o.show_eol, Action::ToggleAllSymbols, p);
@@ -1089,90 +1120,131 @@ impl App {
             });
             tool(ui, Icon::Guides, "Einzugslinien", true, o.indent_guides, Action::ToggleGuides, p);
             sep(ui);
-            tool(ui, Icon::Split, "In anderer Ansicht öffnen", true, split, Action::CloneToOther, p);
-            tool(ui, Icon::Map, "Dokumentkarte", true, show_map, Action::ToggleMap, p);
-            tool(ui, Icon::Funcs, "Funktionsliste", true, show_funcs, Action::ToggleFuncs, p);
-            tool(ui, Icon::Folder, "Ordner als Arbeitsbereich", true, show_folder, Action::ToggleFolder, p);
+            tool(ui, Icon::Split, "Tab auf beiden Seiten zeigen", true, split, Action::CloneToOther, p);
+            tool(ui, Icon::Map, "Übersicht", true, show_map, Action::ToggleMap, p);
+            tool(ui, Icon::Funcs, "Gliederung", true, show_funcs, Action::ToggleFuncs, p);
+            tool(ui, Icon::Folder, "Projektordner", true, show_folder, Action::ToggleFolder, p);
             sep(ui);
-            tool(ui, Icon::Monitor, "Datei überwachen", true, monitor, Action::ToggleMonitor, p);
+            tool(ui, Icon::Monitor, "Änderungen fortlaufend anzeigen", true, monitor, Action::ToggleMonitor, p);
         });
     }
 
     fn status_bar(&mut self, ui: &mut Ui) {
-        let c = chrome(self.settings.theme);
+        let theme_id = self.settings.theme;
+        let c = chrome(theme_id);
+        let retro = theme_id.retro();
         let rect = ui.max_rect();
-        let w = rect.width();
+        if !retro {
+            ui.painter().line_segment([pos2(rect.left(), rect.top()), pos2(rect.right(), rect.top())], Stroke::new(1.0, c.line));
+        }
         let (d, v) = (self.cur_doc(), self.cur_view());
         let main = v.sels.main();
         let line = d.text.char_to_line(main.head);
         let col = main.head - d.line_start(line) + 1;
         let sel_chars: usize = v.sels.sels.iter().map(|s| s.end() - s.start()).sum();
-        let lang = d.hl.language.clone().unwrap_or_else(|| "Normal text file".to_string());
-        let fields: [(f32, String); 6] = [
-            (0.064, lang.clone()),
-            (0.266, format!("Länge: {}    Zeilen: {}", d.len(), d.lines())),
-            (0.322, if sel_chars > 0 {
-                format!("Zei: {}    Spa: {}    Sel: {}", line + 1, col, sel_chars)
-            } else {
-                format!("Zei: {}    Spa: {}    Pos: {}", line + 1, col, main.head + 1)
-            }),
-            (0.137, d.eol.label().to_string()),
-            (0.147, d.enc.label()),
-            (0.064, if v.overwrite { "OVR" } else { "INS" }.to_string()),
-        ];
-        let font = FontId::proportional(if self.settings.theme.retro() { 13.0 } else { 14.0 });
-        let painter = ui.painter_at(rect);
-        let mut x = rect.left() + 5.0;
-        let retro = self.settings.theme.retro();
-        if !retro {
-            painter.line_segment([pos2(rect.left(), rect.top()), pos2(rect.right(), rect.top())], Stroke::new(1.0, c.line));
+        let mut pos = format!("Zeile {}, Spalte {}", group(line + 1), group(col));
+        if sel_chars > 0 {
+            pos.push_str(&format!("   ({} markiert)", group(sel_chars)));
         }
-        let mut eol_rect = None;
-        let mut enc_rect = None;
-        let mut lang_rect = None;
-        for (i, (frac, text)) in fields.iter().enumerate() {
-            let fw = frac * (w - 10.0);
-            let r = Rect::from_min_size(pos2(x, rect.top() + 1.0), vec2(fw, rect.height() - 1.0));
-            let clip = painter.with_clip_rect(r.shrink2(vec2(1.0, 0.0)));
-            clip.text(pos2(r.left() + 2.0, r.center().y), Align2::LEFT_CENTER, text, font.clone(), c.text);
-            if retro {
-                // Jedes Feld vertieft, mit etwas Abstand zum Nachbarn.
-                let f = Rect::from_min_max(pos2(r.left().round(), r.top() + 3.0), pos2(r.right().round() - 2.0, r.bottom() - 2.0));
-                theme::bevel_thin(&painter, f, false);
-            } else if i < 5 {
-                painter.line_segment(
-                    [pos2(r.right() - 1.0, r.top() + 3.0), pos2(r.right() - 1.0, r.bottom() - 3.0)],
-                    Stroke::new(1.0, c.line),
-                );
-            }
-            match i {
-                0 => lang_rect = Some(r),
-                3 => eol_rect = Some(r),
-                4 => enc_rect = Some(r),
-                _ => {}
-            }
-            x += fw;
-        }
+        let cur_lang = d.hl.language.clone();
+        let lang = cur_lang.clone().unwrap_or_else(|| "Nur Text".to_string());
+        let counts = format!("{} Zeichen, {} Zeilen", group(d.len()), group(d.lines()));
         let (cur_eol, cur_enc) = (d.eol, d.enc);
+        let mode = if v.overwrite { "ÜB" } else { "EINF" };
+        let size = if retro { 13.0 } else { 14.0 };
+        let txt = |s: &str| RichText::new(s).size(size).color(c.text);
+
+        let mut child = ui.new_child(
+            UiBuilder::new()
+                .max_rect(rect.shrink2(vec2(8.0, 0.0)))
+                .layout(egui::Layout::left_to_right(egui::Align::Center)),
+        );
+        let ui = &mut child;
+        flat(ui);
+        ui.spacing_mut().item_spacing = vec2(if retro { 8.0 } else { 0.0 }, 0.0);
+        ui.spacing_mut().button_padding = vec2(4.0, 1.0);
+        // Klassisch steht jedes Feld vertieft für sich, sonst trennt ein Punkt.
+        let frame = |ui: &Ui, r: Rect| {
+            if retro {
+                let f = Rect::from_min_max(pos2(r.left() - 3.0, rect.top() + 3.0), pos2(r.right() + 3.0, rect.bottom() - 2.0));
+                theme::bevel_thin(ui.painter(), Rect::from_min_max(f.min.round(), f.max.round()), false);
+            }
+        };
+        let dot = |ui: &mut Ui| {
+            if !retro {
+                ui.add_space(6.0);
+                ui.label(RichText::new("·").size(size).color(c.text_dim));
+                ui.add_space(6.0);
+            }
+        };
+        let r = ui.label(txt(&pos)).rect;
+        frame(ui, r);
         let pending = &mut self.pending;
-        if let Some(r) = lang_rect {
-            ui.interact(r, ui.id().with("st_lang"), Sense::hover()).on_hover_text(&lang);
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            // Reine Textfelder bekommen denselben Innenabstand wie die Knöpfe daneben.
+            ui.add_space(4.0);
+            let r = ui.label(txt(mode)).on_hover_text(if mode == "ÜB" { "Überschreiben (Einfg)" } else { "Einfügen (Einfg)" }).rect;
+            ui.add_space(4.0);
+            frame(ui, r);
+            dot(ui);
+            ui.add_space(4.0);
+            let r = ui.label(txt(&counts)).rect;
+            ui.add_space(4.0);
+            frame(ui, r);
+            dot(ui);
+            let r = ui
+                .menu_button(txt(cur_eol.short()), |ui| eol_menu(ui, pending, cur_eol))
+                .response
+                .on_hover_text(format!("Zeilenende: {}", cur_eol.label()))
+                .rect;
+            frame(ui, r);
+            dot(ui);
+            let r = ui
+                .menu_button(txt(&cur_enc.label()), |ui| {
+                    encoding_menu(ui, pending, cur_enc);
+                    ui.separator();
+                    ui.menu_button("Umwandeln in", |ui| {
+                        ui.set_min_width(200.0);
+                        for e in [Enc::Utf8, Enc::Utf8Bom, Enc::Utf16Le, Enc::Utf16Be, Enc::Ansi] {
+                            mi(ui, pending, e.label().as_str(), "", Action::Convert(e));
+                        }
+                    });
+                })
+                .response
+                .on_hover_text("Kodierung")
+                .rect;
+            frame(ui, r);
+            dot(ui);
+            let r = ui
+                .menu_button(txt(&lang), |ui| language_menu(ui, pending, cur_lang.as_deref()))
+                .response
+                .on_hover_text("Sprache für die Farben")
+                .rect;
+            frame(ui, r);
+        });
+    }
+}
+
+/// Zahl mit Tausenderpunkten, z. B. 12.345.
+fn group(n: usize) -> String {
+    let s = n.to_string();
+    let mut out = String::with_capacity(s.len() + s.len() / 3);
+    for (i, ch) in s.chars().enumerate() {
+        if i > 0 && (s.len() - i) % 3 == 0 {
+            out.push('.');
         }
-        if let Some(r) = eol_rect {
-            ui.interact(r, ui.id().with("st_eol"), Sense::click()).context_menu(|ui| {
-                ui.set_min_width(170.0);
-                for e in [Eol::Crlf, Eol::Lf, Eol::Cr] {
-                    check(ui, pending, e.label(), cur_eol == e, "", Action::SetEol(e));
-                }
-            });
-        }
-        if let Some(r) = enc_rect {
-            ui.interact(r, ui.id().with("st_enc"), Sense::click()).context_menu(|ui| {
-                ui.set_min_width(170.0);
-                for e in [Enc::Ansi, Enc::Utf8, Enc::Utf8Bom, Enc::Utf16Be, Enc::Utf16Le] {
-                    check(ui, pending, &e.label(), cur_enc == e, "", Action::Convert(e));
-                }
-            });
-        }
+        out.push(ch);
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn numbers_get_thousand_dots() {
+        assert_eq!(super::group(0), "0");
+        assert_eq!(super::group(999), "999");
+        assert_eq!(super::group(1000), "1.000");
+        assert_eq!(super::group(1234567), "1.234.567");
     }
 }

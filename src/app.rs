@@ -318,12 +318,12 @@ impl App {
     pub fn new_doc(&mut self) -> DocId {
         let used: HashSet<String> = self.docs.values().filter(|d| d.path.is_none()).map(|d| d.title.clone()).collect();
         let mut n = 1;
-        while used.contains(&format!("neu {n}")) {
+        while used.contains(&format!("Unbenannt {n}")) {
             n += 1;
         }
         let enc = Enc::from_name(&self.settings.default_enc);
         let eol = Eol::from_name(&self.settings.default_eol);
-        let id = self.alloc_doc(format!("neu {n}"), "", enc, eol);
+        let id = self.alloc_doc(format!("Unbenannt {n}"), "", enc, eol);
         let p = self.active_pane;
         self.add_view(p, id);
         id

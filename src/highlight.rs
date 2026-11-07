@@ -347,7 +347,7 @@ pub fn comment_tokens(lang: Option<&str>) -> (Option<&'static str>, Option<(&'st
     }
 }
 
-/// Muster für die Funktionsliste je Sprache.
+/// Muster für die Gliederung je Sprache.
 pub fn function_patterns(lang: Option<&str>) -> Vec<&'static str> {
     match lang.unwrap_or("").to_lowercase().as_str() {
         "rust" => vec![
@@ -420,6 +420,11 @@ mod tests {
         assert_eq!(detect("skript.txt", "#!/bin/sh\n"), None, "die Endung geht vor");
     }
 
+    fn light_comment() -> Color32 {
+        let c = crate::theme::syntax(ThemeId::Light).comment;
+        Color32::from_rgb((c >> 16) as u8, (c >> 8) as u8, c as u8)
+    }
+
     #[test]
     fn own_languages_work() {
         assert_eq!(detect("a.ps1", "").as_deref(), Some("PowerShell"));
@@ -427,7 +432,7 @@ mod tests {
         let text = Rope::from_str("# x\nGet-Item $a\n");
         let mut h = DocHl::new(Some("PowerShell".into()));
         assert!(h.ensure(&text, 0, 2, Duration::from_secs(5)));
-        assert_eq!(h.spans(0).unwrap()[0].color, Color32::from_rgb(0, 128, 0));
+        assert_eq!(h.spans(0).unwrap()[0].color, light_comment());
     }
 
     #[test]
@@ -437,7 +442,7 @@ mod tests {
         assert!(h.ensure(&text, 0, 2, Duration::from_secs(5)));
         let comment = h.spans(0).unwrap();
         let code = h.spans(1).unwrap();
-        assert_eq!(comment[0].color, Color32::from_rgb(0, 128, 0));
+        assert_eq!(comment[0].color, light_comment());
         assert_ne!(code[0].color, comment[0].color);
     }
 

@@ -508,7 +508,7 @@ mod tests {
     use super::*;
 
     fn d(t: &str) -> Document {
-        Document::new(1, "neu 1".into(), t, Enc::Utf8, Eol::Crlf)
+        Document::new(1, "Unbenannt 1".into(), t, Enc::Utf8, Eol::Crlf)
     }
 
     fn edit(doc: &mut Document, kind: Kind, a: usize, b: usize, t: &str) {

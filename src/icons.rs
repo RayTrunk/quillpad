@@ -350,19 +350,13 @@ pub fn paint(p: &Painter, r: Rect, icon: Icon, enabled: bool, on_dark: bool, cla
     }
 }
 
-/// Das kleine Diskettensymbol auf den Tabs.
-pub fn tab_floppy(p: &Painter, r: Rect, modified: bool, read_only: bool, classic: bool) {
-    let body = if read_only {
-        0x909090
-    } else if modified {
-        0x8860B0
-    } else {
-        0x3A8BD8
-    };
-    let col = Color32::from_rgb((body >> 16) as u8, (body >> 8) as u8, body as u8);
-    if !classic && paint_glyph(p, r, glyph(Icon::Save), r.height() * 0.89, col) {
+/// Kleines Schloss für schreibgeschützte Tabs.
+pub fn paint_lock(p: &Painter, r: Rect, color: Color32) {
+    if paint_glyph(p, r, '\u{E72E}', r.height() * 0.75, color) {
         return;
     }
-    let g = G { p, r, dim: false, on_dark: false };
-    g.floppy(1.0, 1.0, 14.0, body);
+    let c = r.center();
+    let body = Rect::from_center_size(c + egui::vec2(0.0, 2.0), egui::vec2(9.0, 7.0));
+    p.rect_filled(body, 1.0, color);
+    p.circle_stroke(c + egui::vec2(0.0, -1.5), 3.0, Stroke::new(1.4, color));
 }

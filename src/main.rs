@@ -80,7 +80,7 @@ fn main() -> eframe::Result {
         }
     }
     let loaded = storage.as_ref().map(|s| s.load_settings()).unwrap_or_default();
-    let size = if screenshot_mode { None } else { loaded.window }.unwrap_or([945.0, 617.0]);
+    let size = if screenshot_mode { None } else { loaded.window }.unwrap_or([1000.0, 700.0]);
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()

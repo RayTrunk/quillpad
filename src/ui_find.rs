@@ -759,13 +759,13 @@ impl App {
                             do_prev |= wide(ui, "Rückwärts suchen");
                             do_count |= wide(ui, "Zählen");
                             do_all_cur |= wide(ui, "Alle im aktuellen Dokument");
-                            do_all_open |= wide(ui, "Alle in offenen Dokumenten");
+                            do_all_open |= wide(ui, "In allen Tabs");
                         }
                         FindTab::Replace => {
                             do_next |= wide(ui, "Weitersuchen");
                             do_replace |= wide(ui, "Ersetzen");
                             do_replace_all |= wide(ui, "Alle ersetzen");
-                            do_replace_open |= wide(ui, "Alle in offenen Dokumenten ersetzen");
+                            do_replace_open |= wide(ui, "In allen Tabs ersetzen");
                         }
                         FindTab::Files => {
                             do_files |= wide(ui, "Alle suchen");

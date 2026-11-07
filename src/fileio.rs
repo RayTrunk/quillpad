@@ -12,9 +12,17 @@ pub enum Eol {
 impl Eol {
     pub fn label(self) -> &'static str {
         match self {
-            Eol::Crlf => "Windows (CR LF)",
-            Eol::Lf => "Unix (LF)",
-            Eol::Cr => "Macintosh (CR)",
+            Eol::Crlf => "CRLF – Windows",
+            Eol::Lf => "LF – Linux, macOS",
+            Eol::Cr => "CR – altes Mac OS",
+        }
+    }
+    /// Kurzform für die Statuszeile.
+    pub fn short(self) -> &'static str {
+        match self {
+            Eol::Crlf => "CRLF",
+            Eol::Lf => "LF",
+            Eol::Cr => "CR",
         }
     }
     pub fn as_str(self) -> &'static str {
@@ -75,9 +83,9 @@ impl Enc {
         match self {
             Enc::Ansi => "ANSI".into(),
             Enc::Utf8 => "UTF-8".into(),
-            Enc::Utf8Bom => "UTF-8-BOM".into(),
-            Enc::Utf16Le => "UTF-16 LE BOM".into(),
-            Enc::Utf16Be => "UTF-16 BE BOM".into(),
+            Enc::Utf8Bom => "UTF-8 mit BOM".into(),
+            Enc::Utf16Le => "UTF-16 LE".into(),
+            Enc::Utf16Be => "UTF-16 BE".into(),
             Enc::Legacy(e) => e.name().to_string(),
         }
     }

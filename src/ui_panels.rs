@@ -234,7 +234,7 @@ impl App {
                 .frame(egui::Frame::NONE.fill(c.window).inner_margin(4))
                 .show(ctx, |ui| {
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new("Arbeitsbereich").strong());
+                        ui.label(RichText::new("Projektordner").strong());
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             if ui.small_button("✖").on_hover_text("Schließen").clicked() {
                                 close = true;
@@ -275,7 +275,7 @@ impl App {
                 .frame(egui::Frame::NONE.fill(c.window).inner_margin(4))
                 .show(ctx, |ui| {
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new("Funktionsliste").strong());
+                        ui.label(RichText::new("Gliederung").strong());
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             if ui.small_button("✖").clicked() {
                                 close = true;
@@ -517,7 +517,7 @@ impl App {
                 });
             }
             Dialog::Summary { text } => {
-                center("Zusammenfassung").show(ctx, |ui| {
+                center("Dokumentinfo").show(ctx, |ui| {
                     ui.label(text.as_str());
                     ui.add_space(8.0);
                     if ui.button("OK").clicked() || esc {
@@ -646,7 +646,7 @@ impl App {
             }
             Dialog::Column { text, numbers, start, step, repeat, leading, format } => {
                 let mut go = false;
-                center("Spalteneditor").show(ctx, |ui| {
+                center("Zahlenfolge einfügen").show(ctx, |ui| {
                     ui.radio_value(numbers, false, "Text einfügen");
                     ui.add_enabled(!*numbers, egui::TextEdit::singleline(text).desired_width(240.0));
                     ui.add_space(4.0);
@@ -796,7 +796,7 @@ impl App {
             }
             Dialog::ConfirmReplaceOpen => {
                 center("Alle ersetzen").show(ctx, |ui| {
-                    ui.label("Alle Treffer in allen offenen Dokumenten ersetzen?");
+                    ui.label("Alle Treffer in allen offenen Tabs ersetzen?");
                     ui.add_space(8.0);
                     ui.horizontal(|ui| {
                         if ui.button("Ersetzen").clicked() {
@@ -872,7 +872,7 @@ impl App {
     }
 }
 
-/// Eine Zahl für den Spalteneditor. Format: 0 dezimal, 1 hex, 2 HEX, 3 oktal, 4 binär; Auffüllen: 0 nichts, 1 Nullen, 2 Leerzeichen, bis zur Breite der längsten Zahl.
+/// Eine Zahl für „Zahlenfolge einfügen“. Format: 0 dezimal, 1 hex, 2 HEX, 3 oktal, 4 binär; Auffüllen: 0 nichts, 1 Nullen, 2 Leerzeichen, bis zur Breite der längsten Zahl.
 pub fn column_number(first: i64, inc: i64, repeat: usize, i: usize, count: usize, leading: u8, format: u8) -> String {
     let value = |k: usize| first + inc * (k / repeat.max(1)) as i64;
     let text = |v: i64| {
