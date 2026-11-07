@@ -180,8 +180,6 @@ pub struct Shortcut {
     action: fn() -> Action,
 }
 
-// Die Tabelle zeichnet ui_panels.rs; bis es diese Methoden nutzt, schweigt die Warnung.
-#[allow(dead_code)]
 impl Shortcut {
     /// Tastenkürzel in der Schreibweise der eingestellten Sprache.
     pub fn keys_text(&self) -> String {

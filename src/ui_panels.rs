@@ -689,8 +689,8 @@ impl App {
                     egui::ScrollArea::vertical().max_height(420.0).show(ui, |ui| {
                         egui::Grid::new("keys").num_columns(2).striped(true).spacing([18.0, 3.0]).show(ui, |ui| {
                             for s in ui_chrome::shortcuts() {
-                                ui.label(s.label);
-                                ui.label(RichText::new(s.keys).weak());
+                                ui.label(s.label_text());
+                                ui.label(RichText::new(s.keys_text()).weak());
                                 ui.end_row();
                             }
                         });
