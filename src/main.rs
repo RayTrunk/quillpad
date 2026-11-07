@@ -8,6 +8,7 @@ mod doc;
 mod editor;
 mod fileio;
 mod highlight;
+mod i18n;
 mod icons;
 mod instance;
 mod search;
@@ -59,6 +60,7 @@ fn main() -> eframe::Result {
         }
     }
     let loaded = storage.as_ref().map(|s| s.load_settings()).unwrap_or_default();
+    i18n::set_lang(loaded.language.unwrap_or_else(i18n::system_lang));
     let size = if screenshot_mode { None } else { loaded.window }.unwrap_or([1000.0, 700.0]);
 
     let options = eframe::NativeOptions {

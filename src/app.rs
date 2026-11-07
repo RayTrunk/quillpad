@@ -278,6 +278,12 @@ impl App {
         for part in state.split(',') {
             match part {
                 "dark" => self.settings.theme = crate::theme::ThemeId::Dark,
+                t if t.starts_with("lang=") => {
+                    if let Some(l) = crate::i18n::Lang::from_locale(&t[5..]) {
+                        self.settings.language = Some(l);
+                        crate::i18n::set_lang(l);
+                    }
+                }
                 t if t.starts_with("theme=") => {
                     if let Some(id) = crate::theme::ThemeId::from_key(&t[6..]) {
                         self.settings.theme = id;
@@ -331,12 +337,12 @@ impl App {
     pub fn new_doc(&mut self) -> DocId {
         let used: HashSet<String> = self.docs.values().filter(|d| d.path.is_none()).map(|d| d.title.clone()).collect();
         let mut n = 1;
-        while used.contains(&format!("Unbenannt {n}")) {
+        while used.contains(&crate::t!("common.untitled", n = n)) {
             n += 1;
         }
         let enc = Enc::from_name(&self.settings.default_enc);
         let eol = Eol::from_name(&self.settings.default_eol);
-        let id = self.alloc_doc(format!("Unbenannt {n}"), "", enc, eol);
+        let id = self.alloc_doc(crate::t!("common.untitled", n = n), "", enc, eol);
         let p = self.active_pane;
         self.add_view(p, id);
         id

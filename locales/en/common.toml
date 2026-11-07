@@ -1,0 +1,22 @@
+# Gemeinsame Texte, von mehreren Dateien genutzt.
+[common]
+untitled = "Untitled {n}"
+plain_text = "Plain text"
+language = "Language:"
+language_system = "System language ({name})"
+
+[theme]
+light = "Light"
+dark = "Dark"
+solarized_light = "Solarized Light"
+solarized_dark = "Solarized Dark"
+sepia = "Sepia"
+high_contrast = "High contrast"
+
+[eol]
+crlf = "CRLF – Windows"
+lf = "LF – Linux, macOS"
+cr = "CR – classic Mac OS"
+
+[enc]
+utf8_bom = "UTF-8 with BOM"

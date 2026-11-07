@@ -637,6 +637,20 @@ impl App {
                     });
                     ui.checkbox(&mut s.auto_reload, "Geänderte Dateien ohne Nachfrage neu laden");
                     ui.horizontal(|ui| {
+                        ui.label(crate::t!("common.language"));
+                        let system = crate::t!("common.language_system", name = crate::i18n::system_lang().native_name());
+                        let current = s.language.map(|l| l.native_name().to_string()).unwrap_or_else(|| system.clone());
+                        egui::ComboBox::from_id_salt("language")
+                            .selected_text(current)
+                            .width(190.0)
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(&mut s.language, None, system);
+                                for l in crate::i18n::Lang::ALL {
+                                    ui.selectable_value(&mut s.language, Some(l), l.native_name());
+                                }
+                            });
+                    });
+                    ui.horizontal(|ui| {
                         ui.label("Design:");
                         egui::ComboBox::from_id_salt("theme")
                             .selected_text(s.theme.label())
@@ -661,6 +675,8 @@ impl App {
                 if size != self.settings.font_size {
                     self.change_font_size(size);
                 }
+                // Neue Sprache gilt sofort.
+                crate::i18n::set_lang(self.settings.language.unwrap_or_else(crate::i18n::system_lang));
                 if let Some(f) = font_changed {
                     ui_chrome::setup_fonts(ctx, &f, self.settings.theme.retro());
                     self.rebuild_metrics = true;

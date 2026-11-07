@@ -11,6 +11,8 @@ pub struct Settings {
     pub font: String,
     pub font_size: f32,
     pub theme: ThemeId,
+    /// Sprache der Oberfläche; None = Sprache des Systems (sonst Englisch).
+    pub language: Option<crate::i18n::Lang>,
     /// Nur zum Einlesen älterer Einstellungen, aus denen das Design übernommen wird.
     #[serde(skip_serializing)]
     pub dark: bool,
@@ -38,6 +40,7 @@ impl Default for Settings {
             font: "Courier New".into(),
             font_size: 16.0,
             theme: ThemeId::Light,
+            language: None,
             dark: false,
             remember_session: true,
             recent: Vec::new(),

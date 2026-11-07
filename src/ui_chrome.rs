@@ -868,7 +868,7 @@ impl App {
             ui.menu_button("Design", |ui| {
                 ui.set_min_width(170.0);
                 for t in ThemeId::ALL {
-                    check(ui, p, t.label(), cur_theme == t, "", Action::SetTheme(t));
+                    check(ui, p, &t.label(), cur_theme == t, "", Action::SetTheme(t));
                 }
             });
             ui.menu_button("Zoom", |ui| {
@@ -1028,7 +1028,7 @@ fn encoding_menu(ui: &mut Ui, p: &mut Vec<Action>, cur: Enc) {
 fn eol_menu(ui: &mut Ui, p: &mut Vec<Action>, cur: Eol) {
     ui.set_min_width(170.0);
     for e in [Eol::Crlf, Eol::Lf, Eol::Cr] {
-        check(ui, p, e.label(), cur == e, "", Action::SetEol(e));
+        check(ui, p, &e.label(), cur == e, "", Action::SetEol(e));
     }
 }
 

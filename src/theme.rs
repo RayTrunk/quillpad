@@ -31,17 +31,17 @@ impl ThemeId {
         ThemeId::Win98,
     ];
 
-    pub fn label(self) -> &'static str {
+    pub fn label(self) -> String {
         match self {
-            ThemeId::Light => "Hell",
-            ThemeId::Dark => "Dunkel",
-            ThemeId::SolarizedLight => "Solarized Hell",
-            ThemeId::SolarizedDark => "Solarized Dunkel",
-            ThemeId::Nord => "Nord",
-            ThemeId::Monokai => "Monokai",
-            ThemeId::Sepia => "Sepia",
-            ThemeId::HighContrast => "Hoher Kontrast",
-            ThemeId::Win98 => "Windows 98",
+            ThemeId::Light => crate::t!("theme.light"),
+            ThemeId::Dark => crate::t!("theme.dark"),
+            ThemeId::SolarizedLight => crate::t!("theme.solarized_light"),
+            ThemeId::SolarizedDark => crate::t!("theme.solarized_dark"),
+            ThemeId::Nord => "Nord".into(),
+            ThemeId::Monokai => "Monokai".into(),
+            ThemeId::Sepia => crate::t!("theme.sepia"),
+            ThemeId::HighContrast => crate::t!("theme.high_contrast"),
+            ThemeId::Win98 => "Windows 98".into(),
         }
     }
 

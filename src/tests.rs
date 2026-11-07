@@ -15,6 +15,8 @@ struct Rig {
 
 impl Rig {
     fn new() -> Rig {
+        // Die Tests prüfen deutsche Texte.
+        crate::i18n::set_lang(crate::i18n::Lang::De);
         let ctx = Context::default();
         let app = App::new(ctx.clone(), None, Default::default(), Vec::new());
         let mut r = Rig { ctx, app, time: 0.0 };
