@@ -167,7 +167,8 @@ pub fn chrome(t: ThemeId) -> Chrome {
     crate::theme::chrome(t)
 }
 
-/// Ein Eintrag der Tastenkürzel-Tabelle.
+/// Ein Eintrag der Tastenkürzel-Tabelle. `keys` steht englisch ("Ctrl+Shift+S"),
+/// `label` ist ein Übersetzungsschlüssel; angezeigt wird beides über `keys_text`/`label_text`.
 pub struct Shortcut {
     pub keys: &'static str,
     pub label: &'static str,
@@ -179,6 +180,20 @@ pub struct Shortcut {
     action: fn() -> Action,
 }
 
+// Die Tabelle zeichnet ui_panels.rs; bis es diese Methoden nutzt, schweigt die Warnung.
+#[allow(dead_code)]
+impl Shortcut {
+    /// Tastenkürzel in der Schreibweise der eingestellten Sprache.
+    pub fn keys_text(&self) -> String {
+        crate::i18n::keys(self.keys)
+    }
+
+    /// Beschreibung in der eingestellten Sprache.
+    pub fn label_text(&self) -> String {
+        crate::i18n::tr(self.label)
+    }
+}
+
 macro_rules! sc {
     ($keys:expr, $label:expr, $c:expr, $s:expr, $a:expr, $key:ident, $ed:expr, $act:expr) => {
         Shortcut { keys: $keys, label: $label, ctrl: $c, shift: $s, alt: $a, key: Key::$key, editor_only: $ed, action: || $act }
@@ -188,53 +203,53 @@ macro_rules! sc {
 pub fn shortcuts() -> Vec<Shortcut> {
     use Action as A;
     vec![
-        sc!("Strg+N", "Neu", true, false, false, N, false, A::New),
-        sc!("Strg+O", "Öffnen", true, false, false, O, false, A::Open),
-        sc!("Strg+S", "Speichern", true, false, false, S, false, A::Save),
-        sc!("Strg+Alt+S", "Speichern unter", true, false, true, S, false, A::SaveAs),
-        sc!("Strg+Umschalt+S", "Alle speichern", true, true, false, S, false, A::SaveAll),
-        sc!("Strg+W", "Schließen", true, false, false, W, false, A::Close),
-        sc!("Strg+Umschalt+W", "Alle schließen", true, true, false, W, false, A::CloseAll),
-        sc!("Strg+P", "Drucken", true, false, false, P, false, A::Print),
-        sc!("Strg+Tab", "Nächster Tab", true, false, false, Tab, false, A::NextTab),
-        sc!("Strg+Umschalt+Tab", "Vorheriger Tab", true, true, false, Tab, false, A::PrevTab),
-        sc!("Strg+Z", "Rückgängig", true, false, false, Z, true, A::Cmd(Cmd::Undo)),
-        sc!("Strg+Y", "Wiederholen", true, false, false, Y, true, A::Cmd(Cmd::Redo)),
-        sc!("Strg+Umschalt+Z", "Wiederholen", true, true, false, Z, true, A::Cmd(Cmd::Redo)),
-        sc!("Strg+A", "Alles markieren", true, false, false, A, true, A::Cmd(Cmd::SelectAll)),
-        sc!("Strg+D", "Zeile duplizieren", true, false, false, D, true, A::Cmd(Cmd::DuplicateLines)),
-        sc!("Strg+L", "Zeile löschen", true, false, false, L, true, A::Cmd(Cmd::DeleteLines)),
-        sc!("Strg+J", "Zeilen verbinden", true, false, false, J, true, A::Cmd(Cmd::JoinLines)),
-        sc!("Strg+Umschalt+Hoch", "Zeile nach oben", true, true, false, ArrowUp, true, A::Cmd(Cmd::MoveLinesUp)),
-        sc!("Strg+Umschalt+Runter", "Zeile nach unten", true, true, false, ArrowDown, true, A::Cmd(Cmd::MoveLinesDown)),
-        sc!("Strg+U", "Kleinbuchstaben", true, false, false, U, true, A::Cmd(Cmd::Case(CaseKind::Lower))),
-        sc!("Strg+Umschalt+U", "GROSSBUCHSTABEN", true, true, false, U, true, A::Cmd(Cmd::Case(CaseKind::Upper))),
-        sc!("Strg+Q", "Kommentar umschalten", true, false, false, Q, true, A::Cmd(Cmd::Comment(None))),
-        sc!("Strg+K", "Zeile kommentieren", true, false, false, K, true, A::Cmd(Cmd::Comment(Some(true)))),
-        sc!("Strg+Umschalt+K", "Kommentar entfernen", true, true, false, K, true, A::Cmd(Cmd::Comment(Some(false)))),
-        sc!("Strg+Umschalt+Q", "Blockkommentar", true, true, false, Q, true, A::Cmd(Cmd::BlockComment)),
-        sc!("Strg+Leertaste", "Wort vervollständigen", true, false, false, Space, true, A::Autocomplete),
-        sc!("Alt+C", "Zahlenfolge einfügen", false, false, true, C, true, A::ColumnEditor),
-        sc!("Strg+F", "Suchen", true, false, false, F, false, A::ShowFind(FindTab::Find)),
-        sc!("Strg+H", "Ersetzen", true, false, false, H, false, A::ShowFind(FindTab::Replace)),
-        sc!("Strg+Umschalt+F", "In Dateien suchen", true, true, false, F, false, A::ShowFind(FindTab::Files)),
-        sc!("Strg+M", "Treffer hervorheben", true, false, false, M, false, A::ShowFind(FindTab::Mark)),
-        sc!("F3", "Weitersuchen", false, false, false, F3, false, A::FindNext),
-        sc!("Umschalt+F3", "Rückwärts suchen", false, true, false, F3, false, A::FindPrev),
-        sc!("Strg+F3", "Markierten Text suchen", true, false, false, F3, false, A::FindSelectedNext),
-        sc!("Strg+G", "Gehe zu", true, false, false, G, false, A::GoToDialog),
-        sc!("Strg+B", "Zur passenden Klammer", true, false, false, B, true, A::MatchBrace),
-        sc!("Strg+F2", "Lesezeichen setzen/entfernen", true, false, false, F2, false, A::BookmarkToggle),
-        sc!("F2", "Nächstes Lesezeichen", false, false, false, F2, false, A::BookmarkNext),
-        sc!("Umschalt+F2", "Vorheriges Lesezeichen", false, true, false, F2, false, A::BookmarkPrev),
-        sc!("F11", "Vollbild", false, false, false, F11, false, A::ToggleFullscreen),
-        sc!("Alt+0", "Alles einklappen", false, false, true, Num0, false, A::FoldAll),
-        sc!("Alt+Umschalt+0", "Alles ausklappen", false, true, true, Num0, false, A::UnfoldAll),
-        sc!("Strg+Alt+F", "Aktuelle Ebene ein-/ausklappen", true, false, true, F, false, A::FoldCurrent),
-        sc!("Strg+Plus", "Vergrößern", true, false, false, Plus, false, A::ZoomIn),
-        sc!("Strg+=", "Vergrößern", true, false, false, Equals, false, A::ZoomIn),
-        sc!("Strg+Minus", "Verkleinern", true, false, false, Minus, false, A::ZoomOut),
-        sc!("Strg+0", "Normale Größe", true, false, false, Num0, false, A::ZoomReset),
+        sc!("Ctrl+N", "menu.new", true, false, false, N, false, A::New),
+        sc!("Ctrl+O", "tool.open", true, false, false, O, false, A::Open),
+        sc!("Ctrl+S", "menu.save", true, false, false, S, false, A::Save),
+        sc!("Ctrl+Alt+S", "shortcut.save_as", true, false, true, S, false, A::SaveAs),
+        sc!("Ctrl+Shift+S", "menu.save_all", true, true, false, S, false, A::SaveAll),
+        sc!("Ctrl+W", "menu.close", true, false, false, W, false, A::Close),
+        sc!("Ctrl+Shift+W", "menu.close_all", true, true, false, W, false, A::CloseAll),
+        sc!("Ctrl+P", "tool.print", true, false, false, P, false, A::Print),
+        sc!("Ctrl+Tab", "menu.next_tab", true, false, false, Tab, false, A::NextTab),
+        sc!("Ctrl+Shift+Tab", "menu.prev_tab", true, true, false, Tab, false, A::PrevTab),
+        sc!("Ctrl+Z", "menu.undo", true, false, false, Z, true, A::Cmd(Cmd::Undo)),
+        sc!("Ctrl+Y", "menu.redo", true, false, false, Y, true, A::Cmd(Cmd::Redo)),
+        sc!("Ctrl+Shift+Z", "menu.redo", true, true, false, Z, true, A::Cmd(Cmd::Redo)),
+        sc!("Ctrl+A", "menu.select_all", true, false, false, A, true, A::Cmd(Cmd::SelectAll)),
+        sc!("Ctrl+D", "menu.dup_line", true, false, false, D, true, A::Cmd(Cmd::DuplicateLines)),
+        sc!("Ctrl+L", "menu.del_line", true, false, false, L, true, A::Cmd(Cmd::DeleteLines)),
+        sc!("Ctrl+J", "menu.join_lines", true, false, false, J, true, A::Cmd(Cmd::JoinLines)),
+        sc!("Ctrl+Shift+Up", "menu.line_up", true, true, false, ArrowUp, true, A::Cmd(Cmd::MoveLinesUp)),
+        sc!("Ctrl+Shift+Down", "menu.line_down", true, true, false, ArrowDown, true, A::Cmd(Cmd::MoveLinesDown)),
+        sc!("Ctrl+U", "menu.lower", true, false, false, U, true, A::Cmd(Cmd::Case(CaseKind::Lower))),
+        sc!("Ctrl+Shift+U", "menu.upper", true, true, false, U, true, A::Cmd(Cmd::Case(CaseKind::Upper))),
+        sc!("Ctrl+Q", "menu.toggle_comment", true, false, false, Q, true, A::Cmd(Cmd::Comment(None))),
+        sc!("Ctrl+K", "menu.comment_line", true, false, false, K, true, A::Cmd(Cmd::Comment(Some(true)))),
+        sc!("Ctrl+Shift+K", "menu.uncomment", true, true, false, K, true, A::Cmd(Cmd::Comment(Some(false)))),
+        sc!("Ctrl+Shift+Q", "menu.block_comment", true, true, false, Q, true, A::Cmd(Cmd::BlockComment)),
+        sc!("Ctrl+Space", "menu.autocomplete", true, false, false, Space, true, A::Autocomplete),
+        sc!("Alt+C", "shortcut.column_editor", false, false, true, C, true, A::ColumnEditor),
+        sc!("Ctrl+F", "tool.find", true, false, false, F, false, A::ShowFind(FindTab::Find)),
+        sc!("Ctrl+H", "tool.replace", true, false, false, H, false, A::ShowFind(FindTab::Replace)),
+        sc!("Ctrl+Shift+F", "shortcut.find_in_files", true, true, false, F, false, A::ShowFind(FindTab::Files)),
+        sc!("Ctrl+M", "shortcut.mark", true, false, false, M, false, A::ShowFind(FindTab::Mark)),
+        sc!("F3", "menu.find_next", false, false, false, F3, false, A::FindNext),
+        sc!("Shift+F3", "menu.find_prev", false, true, false, F3, false, A::FindPrev),
+        sc!("Ctrl+F3", "menu.find_selected", true, false, false, F3, false, A::FindSelectedNext),
+        sc!("Ctrl+G", "shortcut.goto", true, false, false, G, false, A::GoToDialog),
+        sc!("Ctrl+B", "menu.match_brace", true, false, false, B, true, A::MatchBrace),
+        sc!("Ctrl+F2", "shortcut.bm_toggle", true, false, false, F2, false, A::BookmarkToggle),
+        sc!("F2", "shortcut.bm_next", false, false, false, F2, false, A::BookmarkNext),
+        sc!("Shift+F2", "shortcut.bm_prev", false, true, false, F2, false, A::BookmarkPrev),
+        sc!("F11", "menu.fullscreen", false, false, false, F11, false, A::ToggleFullscreen),
+        sc!("Alt+0", "menu.fold_all", false, false, true, Num0, false, A::FoldAll),
+        sc!("Alt+Shift+0", "menu.unfold_all", false, true, true, Num0, false, A::UnfoldAll),
+        sc!("Ctrl+Alt+F", "shortcut.fold_current", true, false, true, F, false, A::FoldCurrent),
+        sc!("Ctrl+Plus", "menu.zoom_in", true, false, false, Plus, false, A::ZoomIn),
+        sc!("Ctrl+=", "menu.zoom_in", true, false, false, Equals, false, A::ZoomIn),
+        sc!("Ctrl+Minus", "menu.zoom_out", true, false, false, Minus, false, A::ZoomOut),
+        sc!("Ctrl+0", "menu.zoom_reset", true, false, false, Num0, false, A::ZoomReset),
     ]
 }
 
@@ -252,7 +267,7 @@ fn mi(ui: &mut Ui, pending: &mut Vec<Action>, label: &str, keys: &str, action: A
 fn mi_en(ui: &mut Ui, pending: &mut Vec<Action>, label: &str, keys: &str, enabled: bool, action: Action) {
     let mut b = Button::new(label);
     if !keys.is_empty() {
-        b = b.shortcut_text(keys);
+        b = b.shortcut_text(crate::i18n::keys(keys));
     }
     if ui.add_enabled(enabled, b).clicked() {
         pending.push(action);
@@ -264,7 +279,7 @@ fn check(ui: &mut Ui, pending: &mut Vec<Action>, label: &str, on: bool, keys: &s
     // Eingeschaltetes ist farbig hinterlegt, so bleiben alle Einträge bündig.
     let mut b = Button::new(label).selected(on);
     if !keys.is_empty() {
-        b = b.shortcut_text(keys);
+        b = b.shortcut_text(crate::i18n::keys(keys));
     }
     if ui.add(b).clicked() {
         pending.push(action);
@@ -473,16 +488,16 @@ impl App {
         let pending = &mut self.pending;
         resp.context_menu(|ui| {
             ui.set_min_width(190.0);
-            mi(ui, pending, "Ausschneiden", "Strg+X", Action::Cmd(Cmd::Cut));
-            mi(ui, pending, "Kopieren", "Strg+C", Action::Cmd(Cmd::Copy));
-            mi(ui, pending, "Einfügen", "Strg+V", Action::Paste);
-            mi(ui, pending, "Löschen", "Entf", Action::Cmd(Cmd::DeleteSelection));
+            mi(ui, pending, &crate::t!("menu.cut"), "Ctrl+X", Action::Cmd(Cmd::Cut));
+            mi(ui, pending, &crate::t!("menu.copy"), "Ctrl+C", Action::Cmd(Cmd::Copy));
+            mi(ui, pending, &crate::t!("menu.paste"), "Ctrl+V", Action::Paste);
+            mi(ui, pending, &crate::t!("menu.delete"), "Del", Action::Cmd(Cmd::DeleteSelection));
             ui.separator();
-            mi(ui, pending, "Alles markieren", "Strg+A", Action::Cmd(Cmd::SelectAll));
+            mi(ui, pending, &crate::t!("menu.select_all"), "Ctrl+A", Action::Cmd(Cmd::SelectAll));
             ui.separator();
-            mi(ui, pending, "GROSSBUCHSTABEN", "Strg+Umschalt+U", Action::Cmd(Cmd::Case(CaseKind::Upper)));
-            mi(ui, pending, "Kleinbuchstaben", "Strg+U", Action::Cmd(Cmd::Case(CaseKind::Lower)));
-            mi(ui, pending, "Kommentar umschalten", "Strg+Q", Action::Cmd(Cmd::Comment(None)));
+            mi(ui, pending, &crate::t!("menu.upper"), "Ctrl+Shift+U", Action::Cmd(Cmd::Case(CaseKind::Upper)));
+            mi(ui, pending, &crate::t!("menu.lower"), "Ctrl+U", Action::Cmd(Cmd::Case(CaseKind::Lower)));
+            mi(ui, pending, &crate::t!("menu.toggle_comment"), "Ctrl+Q", Action::Cmd(Cmd::Comment(None)));
         });
     }
 
@@ -631,20 +646,20 @@ impl App {
             let pending = &mut self.pending;
             resp.context_menu(|ui| {
                 ui.set_min_width(210.0);
-                mi(ui, pending, "Schließen", "Strg+W", Action::CloseTab(pane, i));
-                mi(ui, pending, "Alle anderen schließen", "", Action::CloseOthersOf(pane, i));
+                mi(ui, pending, &crate::t!("menu.close"), "Ctrl+W", Action::CloseTab(pane, i));
+                mi(ui, pending, &crate::t!("menu.close_others"), "", Action::CloseOthersOf(pane, i));
                 ui.separator();
-                mi(ui, pending, "Speichern", "Strg+S", Action::Save);
-                mi(ui, pending, "Speichern unter …", "", Action::SaveAs);
-                mi(ui, pending, "Umbenennen …", "", Action::Rename);
-                mi(ui, pending, "Neu laden", "", Action::Reload);
+                mi(ui, pending, &crate::t!("menu.save"), "Ctrl+S", Action::Save);
+                mi(ui, pending, &crate::t!("menu.save_as"), "", Action::SaveAs);
+                mi(ui, pending, &crate::t!("menu.rename"), "", Action::Rename);
+                mi(ui, pending, &crate::t!("menu.reload"), "", Action::Reload);
                 ui.separator();
-                mi(ui, pending, "Vollständigen Pfad kopieren", "", Action::CopyFullPath);
-                mi(ui, pending, "Dateinamen kopieren", "", Action::CopyFileName);
-                mi(ui, pending, "Ordnerpfad kopieren", "", Action::CopyDirPath);
+                mi(ui, pending, &crate::t!("tab.copy_full_path"), "", Action::CopyFullPath);
+                mi(ui, pending, &crate::t!("tab.copy_file_name"), "", Action::CopyFileName);
+                mi(ui, pending, &crate::t!("tab.copy_dir_path"), "", Action::CopyDirPath);
                 ui.separator();
-                mi(ui, pending, "In andere Ansicht verschieben", "", Action::MoveToOther);
-                mi(ui, pending, "In anderer Ansicht öffnen", "", Action::CloneToOther);
+                mi(ui, pending, &crate::t!("tab.move_other"), "", Action::MoveToOther);
+                mi(ui, pending, &crate::t!("tab.clone_other"), "", Action::CloneToOther);
             });
         }
         let free = Rect::from_min_max(pos2(x.max(bar.left()), rect.top()), bar.max);
@@ -696,11 +711,19 @@ impl App {
     }
 
     fn measure_menus(&self, ctx: &Context) -> f32 {
-        let names = ["Datei", "Bearbeiten", "Ansicht", "Suchen", "Dokument", "Werkzeuge", "Hilfe"];
+        let names = [
+            crate::t!("menu.file"),
+            crate::t!("menu.edit"),
+            crate::t!("menu.view"),
+            crate::t!("menu.search"),
+            crate::t!("menu.document"),
+            crate::t!("menu.tools"),
+            crate::t!("menu.help"),
+        ];
         let font = FontId::proportional(if self.settings.theme.retro() { 13.0 } else { 14.0 });
         names
             .iter()
-            .map(|n| ctx.fonts(|f| f.layout_no_wrap((*n).to_string(), font.clone(), Color32::WHITE).size().x) + 18.0)
+            .map(|n| ctx.fonts(|f| f.layout_no_wrap(n.clone(), font.clone(), Color32::WHITE).size().x) + 18.0)
             .sum()
     }
 
@@ -718,7 +741,7 @@ impl App {
             ui.painter().line_segment([k + vec2(-4.5, -4.5), k + vec2(4.5, 4.5)], st);
             ui.painter().line_segment([k + vec2(4.5, -4.5), k + vec2(-4.5, 4.5)], st);
         }
-        if resp.on_hover_text("Aktuellen Tab schließen").clicked() {
+        if resp.on_hover_text(crate::t!("tab.close_current")).clicked() {
             self.pending.push(Action::Close);
         }
         let names: Vec<(usize, usize, String)> = (0..2)
@@ -766,150 +789,154 @@ impl App {
             (self.show_map, self.show_funcs, self.show_folder, self.sync_v, self.sync_h, self.on_top, self.fullscreen, self.settings.theme);
         let p = &mut self.pending;
 
-        ui.menu_button("Datei", |ui| {
+        ui.menu_button(crate::t!("menu.file"), |ui| {
             ui.set_min_width(250.0);
-            mi(ui, p, "Neu", "Strg+N", Action::New);
-            mi(ui, p, "Öffnen …", "Strg+O", Action::Open);
-            ui.menu_button("Zuletzt geöffnet", |ui| {
+            mi(ui, p, &crate::t!("menu.new"), "Ctrl+N", Action::New);
+            mi(ui, p, &crate::t!("menu.open"), "Ctrl+O", Action::Open);
+            ui.menu_button(crate::t!("menu.recent"), |ui| {
                 ui.set_min_width(300.0);
                 if recent.is_empty() {
-                    ui.add_enabled(false, Button::new("(noch keine)"));
+                    ui.add_enabled(false, Button::new(crate::t!("menu.recent_none")));
                 }
                 for r in &recent {
                     mi(ui, p, r, "", Action::OpenPath(r.into()));
                 }
             });
-            mi_en(ui, p, "Neu laden", "", doc_has_path, Action::Reload);
+            mi_en(ui, p, &crate::t!("menu.reload"), "", doc_has_path, Action::Reload);
             ui.separator();
-            mi(ui, p, "Speichern", "Strg+S", Action::Save);
-            mi(ui, p, "Speichern unter …", "Strg+Alt+S", Action::SaveAs);
-            mi(ui, p, "Kopie speichern unter …", "", Action::SaveCopy);
-            mi(ui, p, "Alle speichern", "Strg+Umschalt+S", Action::SaveAll);
-            mi(ui, p, "Umbenennen …", "", Action::Rename);
+            mi(ui, p, &crate::t!("menu.save"), "Ctrl+S", Action::Save);
+            mi(ui, p, &crate::t!("menu.save_as"), "Ctrl+Alt+S", Action::SaveAs);
+            mi(ui, p, &crate::t!("menu.save_copy"), "", Action::SaveCopy);
+            mi(ui, p, &crate::t!("menu.save_all"), "Ctrl+Shift+S", Action::SaveAll);
+            mi(ui, p, &crate::t!("menu.rename"), "", Action::Rename);
             ui.separator();
-            mi(ui, p, "Schließen", "Strg+W", Action::Close);
-            mi(ui, p, "Alle schließen", "Strg+Umschalt+W", Action::CloseAll);
-            mi(ui, p, "Alle anderen schließen", "", Action::CloseOthers);
+            mi(ui, p, &crate::t!("menu.close"), "Ctrl+W", Action::Close);
+            mi(ui, p, &crate::t!("menu.close_all"), "Ctrl+Shift+W", Action::CloseAll);
+            mi(ui, p, &crate::t!("menu.close_others"), "", Action::CloseOthers);
             ui.separator();
-            let (files, shell) = if cfg!(windows) { ("Im Explorer zeigen", "Eingabeaufforderung hier öffnen") } else { ("Im Dateimanager zeigen", "Terminal hier öffnen") };
-            mi_en(ui, p, files, "", doc_has_path, Action::OpenExplorer);
-            mi_en(ui, p, shell, "", doc_has_path, Action::OpenTerminal);
-            mi(ui, p, "Projektordner wählen …", "", Action::PickWorkspace);
-            mi(ui, p, "Drucken …", "Strg+P", Action::Print);
+            let (files, shell) = if cfg!(windows) {
+                (crate::t!("menu.show_explorer"), crate::t!("menu.open_cmd"))
+            } else {
+                (crate::t!("menu.show_file_manager"), crate::t!("menu.open_terminal"))
+            };
+            mi_en(ui, p, &files, "", doc_has_path, Action::OpenExplorer);
+            mi_en(ui, p, &shell, "", doc_has_path, Action::OpenTerminal);
+            mi(ui, p, &crate::t!("menu.pick_workspace"), "", Action::PickWorkspace);
+            mi(ui, p, &crate::t!("menu.print"), "Ctrl+P", Action::Print);
             ui.separator();
-            mi(ui, p, "Einstellungen …", "", Action::Preferences);
+            mi(ui, p, &crate::t!("menu.preferences"), "", Action::Preferences);
             ui.separator();
-            mi(ui, p, "Beenden", "Alt+F4", Action::Exit);
+            mi(ui, p, &crate::t!("menu.exit"), "Alt+F4", Action::Exit);
         });
 
-        ui.menu_button("Bearbeiten", |ui| {
+        ui.menu_button(crate::t!("menu.edit"), |ui| {
             ui.set_min_width(250.0);
-            mi_en(ui, p, "Rückgängig", "Strg+Z", undo_ok && !read_only, Action::Cmd(Cmd::Undo));
-            mi_en(ui, p, "Wiederholen", "Strg+Y", redo_ok && !read_only, Action::Cmd(Cmd::Redo));
+            mi_en(ui, p, &crate::t!("menu.undo"), "Ctrl+Z", undo_ok && !read_only, Action::Cmd(Cmd::Undo));
+            mi_en(ui, p, &crate::t!("menu.redo"), "Ctrl+Y", redo_ok && !read_only, Action::Cmd(Cmd::Redo));
             ui.separator();
-            mi(ui, p, "Ausschneiden", "Strg+X", Action::Cmd(Cmd::Cut));
-            mi(ui, p, "Kopieren", "Strg+C", Action::Cmd(Cmd::Copy));
-            mi(ui, p, "Einfügen", "Strg+V", Action::Paste);
-            mi(ui, p, "Löschen", "Entf", Action::Cmd(Cmd::DeleteSelection));
-            mi(ui, p, "Alles markieren", "Strg+A", Action::Cmd(Cmd::SelectAll));
+            mi(ui, p, &crate::t!("menu.cut"), "Ctrl+X", Action::Cmd(Cmd::Cut));
+            mi(ui, p, &crate::t!("menu.copy"), "Ctrl+C", Action::Cmd(Cmd::Copy));
+            mi(ui, p, &crate::t!("menu.paste"), "Ctrl+V", Action::Paste);
+            mi(ui, p, &crate::t!("menu.delete"), "Del", Action::Cmd(Cmd::DeleteSelection));
+            mi(ui, p, &crate::t!("menu.select_all"), "Ctrl+A", Action::Cmd(Cmd::SelectAll));
             ui.separator();
-            ui.menu_button("Zeilen", |ui| {
+            ui.menu_button(crate::t!("menu.lines"), |ui| {
                 ui.set_min_width(240.0);
-                mi(ui, p, "Zeile duplizieren", "Strg+D", Action::Cmd(Cmd::DuplicateLines));
-                mi(ui, p, "Zeile löschen", "Strg+L", Action::Cmd(Cmd::DeleteLines));
-                mi(ui, p, "Zeile nach oben", "Strg+Umschalt+Hoch", Action::Cmd(Cmd::MoveLinesUp));
-                mi(ui, p, "Zeile nach unten", "Strg+Umschalt+Runter", Action::Cmd(Cmd::MoveLinesDown));
-                mi(ui, p, "Zeilen verbinden", "Strg+J", Action::Cmd(Cmd::JoinLines));
+                mi(ui, p, &crate::t!("menu.dup_line"), "Ctrl+D", Action::Cmd(Cmd::DuplicateLines));
+                mi(ui, p, &crate::t!("menu.del_line"), "Ctrl+L", Action::Cmd(Cmd::DeleteLines));
+                mi(ui, p, &crate::t!("menu.line_up"), "Ctrl+Shift+Up", Action::Cmd(Cmd::MoveLinesUp));
+                mi(ui, p, &crate::t!("menu.line_down"), "Ctrl+Shift+Down", Action::Cmd(Cmd::MoveLinesDown));
+                mi(ui, p, &crate::t!("menu.join_lines"), "Ctrl+J", Action::Cmd(Cmd::JoinLines));
                 ui.separator();
-                mi(ui, p, "Aufsteigend sortieren", "", Action::Cmd(Cmd::SortLines { descending: false, ignore_case: false }));
-                mi(ui, p, "Absteigend sortieren", "", Action::Cmd(Cmd::SortLines { descending: true, ignore_case: false }));
-                mi(ui, p, "Aufsteigend (ohne Groß/Klein)", "", Action::Cmd(Cmd::SortLines { descending: false, ignore_case: true }));
+                mi(ui, p, &crate::t!("menu.sort_asc"), "", Action::Cmd(Cmd::SortLines { descending: false, ignore_case: false }));
+                mi(ui, p, &crate::t!("menu.sort_desc"), "", Action::Cmd(Cmd::SortLines { descending: true, ignore_case: false }));
+                mi(ui, p, &crate::t!("menu.sort_asc_nocase"), "", Action::Cmd(Cmd::SortLines { descending: false, ignore_case: true }));
                 ui.separator();
-                mi(ui, p, "Doppelte Zeilen entfernen", "", Action::Cmd(Cmd::DedupLines));
-                mi(ui, p, "Leere Zeilen entfernen", "", Action::Cmd(Cmd::RemoveEmptyLines { blank_too: false }));
-                mi(ui, p, "Leere Zeilen und Leerzeilen mit Leerraum entfernen", "", Action::Cmd(Cmd::RemoveEmptyLines { blank_too: true }));
+                mi(ui, p, &crate::t!("menu.dedup"), "", Action::Cmd(Cmd::DedupLines));
+                mi(ui, p, &crate::t!("menu.remove_empty"), "", Action::Cmd(Cmd::RemoveEmptyLines { blank_too: false }));
+                mi(ui, p, &crate::t!("menu.remove_blank"), "", Action::Cmd(Cmd::RemoveEmptyLines { blank_too: true }));
             });
-            ui.menu_button("Groß-/Kleinschreibung", |ui| {
-                mi(ui, p, "GROSSBUCHSTABEN", "Strg+Umschalt+U", Action::Cmd(Cmd::Case(CaseKind::Upper)));
-                mi(ui, p, "Kleinbuchstaben", "Strg+U", Action::Cmd(Cmd::Case(CaseKind::Lower)));
-                mi(ui, p, "Wortanfänge Groß", "", Action::Cmd(Cmd::Case(CaseKind::Proper)));
-                mi(ui, p, "iNVERTIEREN", "", Action::Cmd(Cmd::Case(CaseKind::Invert)));
+            ui.menu_button(crate::t!("menu.case"), |ui| {
+                mi(ui, p, &crate::t!("menu.upper"), "Ctrl+Shift+U", Action::Cmd(Cmd::Case(CaseKind::Upper)));
+                mi(ui, p, &crate::t!("menu.lower"), "Ctrl+U", Action::Cmd(Cmd::Case(CaseKind::Lower)));
+                mi(ui, p, &crate::t!("menu.proper"), "", Action::Cmd(Cmd::Case(CaseKind::Proper)));
+                mi(ui, p, &crate::t!("menu.invert"), "", Action::Cmd(Cmd::Case(CaseKind::Invert)));
             });
-            ui.menu_button("Einzug", |ui| {
-                mi(ui, p, "Einzug vergrößern", "Tab", Action::Cmd(Cmd::Indent));
-                mi(ui, p, "Einzug verkleinern", "Umschalt+Tab", Action::Cmd(Cmd::Outdent));
+            ui.menu_button(crate::t!("menu.indent"), |ui| {
+                mi(ui, p, &crate::t!("menu.indent_more"), "Tab", Action::Cmd(Cmd::Indent));
+                mi(ui, p, &crate::t!("menu.indent_less"), "Shift+Tab", Action::Cmd(Cmd::Outdent));
             });
-            ui.menu_button("Leerraum", |ui| {
-                mi(ui, p, "Leerraum am Zeilenende entfernen", "", Action::Cmd(Cmd::TrimTrailing));
-                mi(ui, p, "Leerraum am Zeilenanfang entfernen", "", Action::Cmd(Cmd::TrimLeading));
-                mi(ui, p, "Tabs in Leerzeichen", "", Action::Cmd(Cmd::TabsToSpaces));
-                mi(ui, p, "Führende Leerzeichen in Tabs", "", Action::Cmd(Cmd::LeadingSpacesToTabs));
+            ui.menu_button(crate::t!("menu.whitespace"), |ui| {
+                mi(ui, p, &crate::t!("menu.trim_trailing"), "", Action::Cmd(Cmd::TrimTrailing));
+                mi(ui, p, &crate::t!("menu.trim_leading"), "", Action::Cmd(Cmd::TrimLeading));
+                mi(ui, p, &crate::t!("menu.tabs_to_spaces"), "", Action::Cmd(Cmd::TabsToSpaces));
+                mi(ui, p, &crate::t!("menu.spaces_to_tabs"), "", Action::Cmd(Cmd::LeadingSpacesToTabs));
             });
-            ui.menu_button("Kommentar", |ui| {
+            ui.menu_button(crate::t!("menu.comment"), |ui| {
                 ui.set_min_width(240.0);
-                mi(ui, p, "Zeilenkommentar umschalten", "Strg+Q", Action::Cmd(Cmd::Comment(None)));
-                mi(ui, p, "Zeile kommentieren", "Strg+K", Action::Cmd(Cmd::Comment(Some(true))));
-                mi(ui, p, "Kommentar entfernen", "Strg+Umschalt+K", Action::Cmd(Cmd::Comment(Some(false))));
-                mi(ui, p, "Blockkommentar", "Strg+Umschalt+Q", Action::Cmd(Cmd::BlockComment));
+                mi(ui, p, &crate::t!("menu.toggle_line_comment"), "Ctrl+Q", Action::Cmd(Cmd::Comment(None)));
+                mi(ui, p, &crate::t!("menu.comment_line"), "Ctrl+K", Action::Cmd(Cmd::Comment(Some(true))));
+                mi(ui, p, &crate::t!("menu.uncomment"), "Ctrl+Shift+K", Action::Cmd(Cmd::Comment(Some(false))));
+                mi(ui, p, &crate::t!("menu.block_comment"), "Ctrl+Shift+Q", Action::Cmd(Cmd::BlockComment));
             });
-            ui.menu_button("In Zwischenablage", |ui| {
-                mi(ui, p, "Vollständiger Dateipfad", "", Action::CopyFullPath);
-                mi(ui, p, "Dateiname", "", Action::CopyFileName);
-                mi(ui, p, "Ordnerpfad", "", Action::CopyDirPath);
+            ui.menu_button(crate::t!("menu.clipboard"), |ui| {
+                mi(ui, p, &crate::t!("menu.full_path"), "", Action::CopyFullPath);
+                mi(ui, p, &crate::t!("menu.file_name"), "", Action::CopyFileName);
+                mi(ui, p, &crate::t!("menu.dir_path"), "", Action::CopyDirPath);
             });
             ui.separator();
-            mi(ui, p, "Wort vervollständigen", "Strg+Leertaste", Action::Autocomplete);
-            mi(ui, p, "Zahlenfolge einfügen …", "Alt+C", Action::ColumnEditor);
-            mi(ui, p, "Datum und Uhrzeit einfügen", "", Action::InsertDateTime);
+            mi(ui, p, &crate::t!("menu.autocomplete"), "Ctrl+Space", Action::Autocomplete);
+            mi(ui, p, &crate::t!("menu.column_editor"), "Alt+C", Action::ColumnEditor);
+            mi(ui, p, &crate::t!("menu.datetime"), "", Action::InsertDateTime);
         });
 
-        ui.menu_button("Ansicht", |ui| {
+        ui.menu_button(crate::t!("menu.view"), |ui| {
             ui.set_min_width(250.0);
-            ui.menu_button("Design", |ui| {
+            ui.menu_button(crate::t!("menu.theme"), |ui| {
                 ui.set_min_width(170.0);
                 for t in ThemeId::ALL {
                     check(ui, p, &t.label(), cur_theme == t, "", Action::SetTheme(t));
                 }
             });
-            ui.menu_button("Zoom", |ui| {
-                mi(ui, p, "Vergrößern", "Strg+Plus", Action::ZoomIn);
-                mi(ui, p, "Verkleinern", "Strg+Minus", Action::ZoomOut);
-                mi(ui, p, "Normale Größe", "Strg+0", Action::ZoomReset);
+            ui.menu_button(crate::t!("menu.zoom"), |ui| {
+                mi(ui, p, &crate::t!("menu.zoom_in"), "Ctrl+Plus", Action::ZoomIn);
+                mi(ui, p, &crate::t!("menu.zoom_out"), "Ctrl+Minus", Action::ZoomOut);
+                mi(ui, p, &crate::t!("menu.zoom_reset"), "Ctrl+0", Action::ZoomReset);
             });
-            check(ui, p, "Vollbild", fullscreen, "F11", Action::ToggleFullscreen);
-            check(ui, p, "Immer im Vordergrund", on_top, "", Action::ToggleOnTop);
+            check(ui, p, &crate::t!("menu.fullscreen"), fullscreen, "F11", Action::ToggleFullscreen);
+            check(ui, p, &crate::t!("menu.on_top"), on_top, "", Action::ToggleOnTop);
             ui.separator();
-            check(ui, p, "Zeilenumbruch", o.wrap, "", Action::ToggleWrap);
-            check(ui, p, "Zeilennummern", o.line_numbers, "", Action::ToggleLineNumbers);
-            check(ui, p, "Einzugslinien", o.indent_guides, "", Action::ToggleGuides);
-            ui.menu_button("Unsichtbare Zeichen", |ui| {
-                check(ui, p, "Leerzeichen und Tabs", o.show_ws, "", Action::ToggleWs);
-                check(ui, p, "Zeilenenden", o.show_eol, "", Action::ToggleEol);
-                check(ui, p, "Alle", o.show_ws && o.show_eol, "", Action::ToggleAllSymbols);
+            check(ui, p, &crate::t!("menu.wrap"), o.wrap, "", Action::ToggleWrap);
+            check(ui, p, &crate::t!("menu.line_numbers"), o.line_numbers, "", Action::ToggleLineNumbers);
+            check(ui, p, &crate::t!("menu.indent_guides"), o.indent_guides, "", Action::ToggleGuides);
+            ui.menu_button(crate::t!("menu.invisibles"), |ui| {
+                check(ui, p, &crate::t!("menu.show_ws"), o.show_ws, "", Action::ToggleWs);
+                check(ui, p, &crate::t!("menu.show_eol"), o.show_eol, "", Action::ToggleEol);
+                check(ui, p, &crate::t!("menu.show_all"), o.show_ws && o.show_eol, "", Action::ToggleAllSymbols);
             });
-            ui.menu_button("Einklappen", |ui| {
+            ui.menu_button(crate::t!("menu.fold"), |ui| {
                 ui.set_min_width(240.0);
-                mi(ui, p, "Aktuelle Ebene umschalten", "Strg+Alt+F", Action::FoldCurrent);
-                mi(ui, p, "Alles einklappen", "Alt+0", Action::FoldAll);
-                mi(ui, p, "Alles ausklappen", "Alt+Umschalt+0", Action::UnfoldAll);
+                mi(ui, p, &crate::t!("menu.fold_toggle"), "Ctrl+Alt+F", Action::FoldCurrent);
+                mi(ui, p, &crate::t!("menu.fold_all"), "Alt+0", Action::FoldAll);
+                mi(ui, p, &crate::t!("menu.unfold_all"), "Alt+Shift+0", Action::UnfoldAll);
             });
             ui.separator();
-            check(ui, p, "Übersicht", show_map, "", Action::ToggleMap);
-            check(ui, p, "Gliederung", show_funcs, "", Action::ToggleFuncs);
-            check(ui, p, "Projektordner", show_folder, "", Action::ToggleFolder);
+            check(ui, p, &crate::t!("menu.map"), show_map, "", Action::ToggleMap);
+            check(ui, p, &crate::t!("menu.outline"), show_funcs, "", Action::ToggleFuncs);
+            check(ui, p, &crate::t!("menu.project_folder"), show_folder, "", Action::ToggleFolder);
             ui.separator();
-            ui.menu_button("Geteilte Ansicht", |ui| {
+            ui.menu_button(crate::t!("menu.split"), |ui| {
                 ui.set_min_width(230.0);
-                mi(ui, p, "Tab auf die andere Seite", "", Action::MoveToOther);
-                mi(ui, p, "Tab auf beiden Seiten zeigen", "", Action::CloneToOther);
+                mi(ui, p, &crate::t!("menu.move_other"), "", Action::MoveToOther);
+                mi(ui, p, &crate::t!("menu.clone_other"), "", Action::CloneToOther);
                 ui.separator();
-                check(ui, p, "Senkrecht gemeinsam scrollen", sync_v, "", Action::ToggleSyncV);
-                check(ui, p, "Waagerecht gemeinsam scrollen", sync_h, "", Action::ToggleSyncH);
+                check(ui, p, &crate::t!("menu.sync_v"), sync_v, "", Action::ToggleSyncV);
+                check(ui, p, &crate::t!("menu.sync_h"), sync_h, "", Action::ToggleSyncH);
             });
-            ui.menu_button("Tabs", |ui| {
+            ui.menu_button(crate::t!("menu.tabs"), |ui| {
                 ui.set_min_width(190.0);
-                mi(ui, p, "Nächster Tab", "Strg+Tab", Action::NextTab);
-                mi(ui, p, "Vorheriger Tab", "Strg+Umschalt+Tab", Action::PrevTab);
+                mi(ui, p, &crate::t!("menu.next_tab"), "Ctrl+Tab", Action::NextTab);
+                mi(ui, p, &crate::t!("menu.prev_tab"), "Ctrl+Shift+Tab", Action::PrevTab);
                 ui.separator();
                 for (pane, i, name) in &doc_names {
                     mi(ui, p, name, "", Action::ActivateTab(*pane, *i));
@@ -917,56 +944,56 @@ impl App {
             });
         });
 
-        ui.menu_button("Suchen", |ui| {
+        ui.menu_button(crate::t!("menu.search"), |ui| {
             ui.set_min_width(250.0);
-            mi(ui, p, "Suchen …", "Strg+F", Action::ShowFind(FindTab::Find));
-            mi(ui, p, "Ersetzen …", "Strg+H", Action::ShowFind(FindTab::Replace));
-            mi(ui, p, "Weitersuchen", "F3", Action::FindNext);
-            mi(ui, p, "Rückwärts suchen", "Umschalt+F3", Action::FindPrev);
-            mi(ui, p, "Markierten Text suchen", "Strg+F3", Action::FindSelectedNext);
-            mi(ui, p, "In Dateien suchen …", "Strg+Umschalt+F", Action::ShowFind(FindTab::Files));
+            mi(ui, p, &crate::t!("menu.find"), "Ctrl+F", Action::ShowFind(FindTab::Find));
+            mi(ui, p, &crate::t!("menu.replace"), "Ctrl+H", Action::ShowFind(FindTab::Replace));
+            mi(ui, p, &crate::t!("menu.find_next"), "F3", Action::FindNext);
+            mi(ui, p, &crate::t!("menu.find_prev"), "Shift+F3", Action::FindPrev);
+            mi(ui, p, &crate::t!("menu.find_selected"), "Ctrl+F3", Action::FindSelectedNext);
+            mi(ui, p, &crate::t!("menu.find_in_files"), "Ctrl+Shift+F", Action::ShowFind(FindTab::Files));
             ui.separator();
-            mi(ui, p, "Treffer hervorheben …", "Strg+M", Action::ShowFind(FindTab::Mark));
-            mi(ui, p, "Hervorhebungen entfernen", "", Action::ClearMarks);
-            ui.menu_button("Lesezeichen", |ui| {
+            mi(ui, p, &crate::t!("menu.mark"), "Ctrl+M", Action::ShowFind(FindTab::Mark));
+            mi(ui, p, &crate::t!("menu.clear_marks"), "", Action::ClearMarks);
+            ui.menu_button(crate::t!("menu.bookmarks"), |ui| {
                 ui.set_min_width(230.0);
-                mi(ui, p, "Setzen/entfernen", "Strg+F2", Action::BookmarkToggle);
-                mi(ui, p, "Nächstes", "F2", Action::BookmarkNext);
-                mi(ui, p, "Vorheriges", "Umschalt+F2", Action::BookmarkPrev);
-                mi(ui, p, "Alle entfernen", "", Action::BookmarksClear);
-                mi(ui, p, "Umkehren", "", Action::BookmarksInvert);
+                mi(ui, p, &crate::t!("menu.bm_toggle"), "Ctrl+F2", Action::BookmarkToggle);
+                mi(ui, p, &crate::t!("menu.bm_next"), "F2", Action::BookmarkNext);
+                mi(ui, p, &crate::t!("menu.bm_prev"), "Shift+F2", Action::BookmarkPrev);
+                mi(ui, p, &crate::t!("menu.bm_clear"), "", Action::BookmarksClear);
+                mi(ui, p, &crate::t!("menu.bm_invert"), "", Action::BookmarksInvert);
                 ui.separator();
-                mi(ui, p, "Zeilen mit Lesezeichen kopieren", "", Action::BookmarksCopyLines);
-                mi(ui, p, "Zeilen mit Lesezeichen löschen", "", Action::BookmarksDeleteLines);
+                mi(ui, p, &crate::t!("menu.bm_copy"), "", Action::BookmarksCopyLines);
+                mi(ui, p, &crate::t!("menu.bm_delete"), "", Action::BookmarksDeleteLines);
             });
             ui.separator();
-            mi(ui, p, "Gehe zu …", "Strg+G", Action::GoToDialog);
-            mi(ui, p, "Zur passenden Klammer", "Strg+B", Action::MatchBrace);
+            mi(ui, p, &crate::t!("menu.goto"), "Ctrl+G", Action::GoToDialog);
+            mi(ui, p, &crate::t!("menu.match_brace"), "Ctrl+B", Action::MatchBrace);
         });
 
-        ui.menu_button("Dokument", |ui| {
+        ui.menu_button(crate::t!("menu.document"), |ui| {
             ui.set_min_width(230.0);
-            ui.menu_button("Sprache", |ui| language_menu(ui, p, cur_lang.as_deref()));
-            ui.menu_button("Kodierung", |ui| encoding_menu(ui, p, cur_enc));
-            ui.menu_button("Umwandeln in", |ui| {
+            ui.menu_button(crate::t!("menu.language"), |ui| language_menu(ui, p, cur_lang.as_deref()));
+            ui.menu_button(crate::t!("menu.encoding"), |ui| encoding_menu(ui, p, cur_enc));
+            ui.menu_button(crate::t!("menu.convert"), |ui| {
                 ui.set_min_width(200.0);
                 for e in [Enc::Utf8, Enc::Utf8Bom, Enc::Utf16Le, Enc::Utf16Be, Enc::Ansi] {
                     mi(ui, p, e.label().as_str(), "", Action::Convert(e));
                 }
             });
-            ui.menu_button("Zeilenende", |ui| eol_menu(ui, p, cur_eol));
+            ui.menu_button(crate::t!("menu.eol"), |ui| eol_menu(ui, p, cur_eol));
             ui.separator();
-            check(ui, p, "Schreibschutz", read_only, "", Action::ToggleReadOnly);
-            check(ui, p, "Änderungen fortlaufend anzeigen", monitoring, "", Action::ToggleMonitor);
+            check(ui, p, &crate::t!("menu.read_only"), read_only, "", Action::ToggleReadOnly);
+            check(ui, p, &crate::t!("menu.monitor"), monitoring, "", Action::ToggleMonitor);
             ui.separator();
-            mi(ui, p, "Dokumentinfo …", "", Action::Summary);
+            mi(ui, p, &crate::t!("menu.summary"), "", Action::Summary);
         });
 
-        ui.menu_button("Werkzeuge", |ui| {
+        ui.menu_button(crate::t!("menu.tools"), |ui| {
             ui.set_min_width(180.0);
-            ui.menu_button("Prüfsumme", |ui| {
+            ui.menu_button(crate::t!("menu.checksum"), |ui| {
                 ui.set_min_width(160.0);
-                ui.label(RichText::new("von Markierung oder Text").small().weak());
+                ui.label(RichText::new(crate::t!("menu.checksum_of")).small().weak());
                 mi(ui, p, "MD5", "", Action::Hash(HashKind::Md5));
                 mi(ui, p, "SHA-1", "", Action::Hash(HashKind::Sha1));
                 mi(ui, p, "SHA-256", "", Action::Hash(HashKind::Sha256));
@@ -974,12 +1001,12 @@ impl App {
             });
         });
 
-        ui.menu_button("Hilfe", |ui| {
+        ui.menu_button(crate::t!("menu.help"), |ui| {
             ui.set_min_width(170.0);
-            mi(ui, p, "Tastenkürzel …", "", Action::Shortcuts);
-            mi(ui, p, "Nach Updates suchen …", "", Action::CheckUpdates);
+            mi(ui, p, &crate::t!("menu.shortcuts"), "", Action::Shortcuts);
+            mi(ui, p, &crate::t!("menu.check_updates"), "", Action::CheckUpdates);
             ui.separator();
-            mi(ui, p, "Über Quillpad …", "", Action::About);
+            mi(ui, p, &crate::t!("menu.about"), "", Action::About);
         });
     }
 }
@@ -987,7 +1014,7 @@ impl App {
 /// Auswahl der Sprache, nach Anfangsbuchstaben gruppiert. Für Menü und Statuszeile.
 fn language_menu(ui: &mut Ui, p: &mut Vec<Action>, cur: Option<&str>) {
     ui.set_min_width(170.0);
-    check(ui, p, "Nur Text", cur.is_none(), "", Action::SetLanguage(None));
+    check(ui, p, &crate::t!("common.plain_text"), cur.is_none(), "", Action::SetLanguage(None));
     ui.separator();
     let names = &highlight::engine().names;
     let mut letters: Vec<char> = names.iter().filter_map(|n| n.chars().next()).map(|c| c.to_ascii_uppercase()).collect();
@@ -1005,11 +1032,11 @@ fn language_menu(ui: &mut Ui, p: &mut Vec<Action>, cur: Option<&str>) {
 /// Kodierung, mit der die Datei gelesen wird. Für Menü und Statuszeile.
 fn encoding_menu(ui: &mut Ui, p: &mut Vec<Action>, cur: Enc) {
     ui.set_min_width(200.0);
-    ui.label(RichText::new("Datei neu einlesen als").small().weak());
+    ui.label(RichText::new(crate::t!("menu.reread_as")).small().weak());
     for e in [Enc::Utf8, Enc::Utf8Bom, Enc::Utf16Le, Enc::Utf16Be, Enc::Ansi] {
         check(ui, p, e.label().as_str(), cur == e, "", Action::Encode(e));
     }
-    ui.menu_button("Weitere Zeichensätze", |ui| {
+    ui.menu_button(crate::t!("menu.more_charsets"), |ui| {
         let list = fileio::legacy_list();
         let mut groups: Vec<&str> = list.iter().map(|x| x.0).collect();
         groups.dedup();
@@ -1087,49 +1114,51 @@ impl App {
                 p.push(action);
             }
         };
+        // Kurzinfo mit Tastenkürzel, z. B. "Neu (Strg+N)".
+        let with_keys = |key: &str, keys: &str| crate::t!("tool.with_keys", label = crate::i18n::tr(key), keys = crate::i18n::keys(keys));
         ui.horizontal_centered(|ui| {
-            tool(ui, Icon::New, "Neu (Strg+N)", true, false, Action::New, p);
-            tool(ui, Icon::Open, "Öffnen (Strg+O)", true, false, Action::Open, p);
-            tool(ui, Icon::Save, "Speichern (Strg+S)", modified, false, Action::Save, p);
-            tool(ui, Icon::SaveAll, "Alle speichern", any_modified, false, Action::SaveAll, p);
-            tool(ui, Icon::Close, "Schließen (Strg+W)", true, false, Action::Close, p);
-            tool(ui, Icon::CloseAll, "Alle schließen", true, false, Action::CloseAll, p);
-            tool(ui, Icon::Print, "Drucken (Strg+P)", true, false, Action::Print, p);
+            tool(ui, Icon::New, &with_keys("menu.new", "Ctrl+N"), true, false, Action::New, p);
+            tool(ui, Icon::Open, &with_keys("tool.open", "Ctrl+O"), true, false, Action::Open, p);
+            tool(ui, Icon::Save, &with_keys("menu.save", "Ctrl+S"), modified, false, Action::Save, p);
+            tool(ui, Icon::SaveAll, &crate::t!("menu.save_all"), any_modified, false, Action::SaveAll, p);
+            tool(ui, Icon::Close, &with_keys("menu.close", "Ctrl+W"), true, false, Action::Close, p);
+            tool(ui, Icon::CloseAll, &crate::t!("menu.close_all"), true, false, Action::CloseAll, p);
+            tool(ui, Icon::Print, &with_keys("tool.print", "Ctrl+P"), true, false, Action::Print, p);
             sep(ui);
-            tool(ui, Icon::Cut, "Ausschneiden", has_sel && !read_only, false, Action::Cmd(Cmd::Cut), p);
-            tool(ui, Icon::Copy, "Kopieren", has_sel, false, Action::Cmd(Cmd::Copy), p);
-            tool(ui, Icon::Paste, "Einfügen", !read_only, false, Action::Paste, p);
+            tool(ui, Icon::Cut, &crate::t!("menu.cut"), has_sel && !read_only, false, Action::Cmd(Cmd::Cut), p);
+            tool(ui, Icon::Copy, &crate::t!("menu.copy"), has_sel, false, Action::Cmd(Cmd::Copy), p);
+            tool(ui, Icon::Paste, &crate::t!("menu.paste"), !read_only, false, Action::Paste, p);
             sep(ui);
-            tool(ui, Icon::Undo, "Rückgängig (Strg+Z)", undo_ok && !read_only, false, Action::Cmd(Cmd::Undo), p);
-            tool(ui, Icon::Redo, "Wiederholen (Strg+Y)", redo_ok && !read_only, false, Action::Cmd(Cmd::Redo), p);
+            tool(ui, Icon::Undo, &with_keys("menu.undo", "Ctrl+Z"), undo_ok && !read_only, false, Action::Cmd(Cmd::Undo), p);
+            tool(ui, Icon::Redo, &with_keys("menu.redo", "Ctrl+Y"), redo_ok && !read_only, false, Action::Cmd(Cmd::Redo), p);
             sep(ui);
-            tool(ui, Icon::Find, "Suchen (Strg+F)", true, false, Action::ShowFind(FindTab::Find), p);
-            tool(ui, Icon::Replace, "Ersetzen (Strg+H)", true, false, Action::ShowFind(FindTab::Replace), p);
+            tool(ui, Icon::Find, &with_keys("tool.find", "Ctrl+F"), true, false, Action::ShowFind(FindTab::Find), p);
+            tool(ui, Icon::Replace, &with_keys("tool.replace", "Ctrl+H"), true, false, Action::ShowFind(FindTab::Replace), p);
             sep(ui);
-            tool(ui, Icon::ZoomIn, "Vergrößern", true, false, Action::ZoomIn, p);
-            tool(ui, Icon::ZoomOut, "Verkleinern", true, false, Action::ZoomOut, p);
+            tool(ui, Icon::ZoomIn, &crate::t!("menu.zoom_in"), true, false, Action::ZoomIn, p);
+            tool(ui, Icon::ZoomOut, &crate::t!("menu.zoom_out"), true, false, Action::ZoomOut, p);
             sep(ui);
-            tool(ui, Icon::SyncV, "Senkrecht gemeinsam scrollen", split, sync_v, Action::ToggleSyncV, p);
-            tool(ui, Icon::SyncH, "Waagerecht gemeinsam scrollen", split, sync_h, Action::ToggleSyncH, p);
+            tool(ui, Icon::SyncV, &crate::t!("menu.sync_v"), split, sync_v, Action::ToggleSyncV, p);
+            tool(ui, Icon::SyncH, &crate::t!("menu.sync_h"), split, sync_h, Action::ToggleSyncH, p);
             sep(ui);
-            tool(ui, Icon::Wrap, "Zeilenumbruch", true, o.wrap, Action::ToggleWrap, p);
-            tool(ui, Icon::ShowAll, "Alle Zeichen anzeigen", true, o.show_ws && o.show_eol, Action::ToggleAllSymbols, p);
+            tool(ui, Icon::Wrap, &crate::t!("menu.wrap"), true, o.wrap, Action::ToggleWrap, p);
+            tool(ui, Icon::ShowAll, &crate::t!("tool.show_all"), true, o.show_ws && o.show_eol, Action::ToggleAllSymbols, p);
             ui.spacing_mut().button_padding = vec2(2.0, 2.0);
             flat(ui);
             ui.menu_button(icons::rich(icons::GLYPH_CHEVRON_DOWN, "▾", 9.0), |ui| {
                 ui.set_min_width(180.0);
-                check(ui, p, "Leerzeichen und Tabs", o.show_ws, "", Action::ToggleWs);
-                check(ui, p, "Zeilenenden", o.show_eol, "", Action::ToggleEol);
-                check(ui, p, "Alle Zeichen", o.show_ws && o.show_eol, "", Action::ToggleAllSymbols);
+                check(ui, p, &crate::t!("menu.show_ws"), o.show_ws, "", Action::ToggleWs);
+                check(ui, p, &crate::t!("menu.show_eol"), o.show_eol, "", Action::ToggleEol);
+                check(ui, p, &crate::t!("tool.all_chars"), o.show_ws && o.show_eol, "", Action::ToggleAllSymbols);
             });
-            tool(ui, Icon::Guides, "Einzugslinien", true, o.indent_guides, Action::ToggleGuides, p);
+            tool(ui, Icon::Guides, &crate::t!("menu.indent_guides"), true, o.indent_guides, Action::ToggleGuides, p);
             sep(ui);
-            tool(ui, Icon::Split, "Tab auf beiden Seiten zeigen", true, split, Action::CloneToOther, p);
-            tool(ui, Icon::Map, "Übersicht", true, show_map, Action::ToggleMap, p);
-            tool(ui, Icon::Funcs, "Gliederung", true, show_funcs, Action::ToggleFuncs, p);
-            tool(ui, Icon::Folder, "Projektordner", true, show_folder, Action::ToggleFolder, p);
+            tool(ui, Icon::Split, &crate::t!("menu.clone_other"), true, split, Action::CloneToOther, p);
+            tool(ui, Icon::Map, &crate::t!("menu.map"), true, show_map, Action::ToggleMap, p);
+            tool(ui, Icon::Funcs, &crate::t!("menu.outline"), true, show_funcs, Action::ToggleFuncs, p);
+            tool(ui, Icon::Folder, &crate::t!("menu.project_folder"), true, show_folder, Action::ToggleFolder, p);
             sep(ui);
-            tool(ui, Icon::Monitor, "Änderungen fortlaufend anzeigen", true, monitor, Action::ToggleMonitor, p);
+            tool(ui, Icon::Monitor, &crate::t!("menu.monitor"), true, monitor, Action::ToggleMonitor, p);
         });
     }
 
@@ -1146,15 +1175,17 @@ impl App {
         let line = d.text.char_to_line(main.head);
         let col = main.head - d.line_start(line) + 1;
         let sel_chars: usize = v.sels.sels.iter().map(|s| s.end() - s.start()).sum();
-        let mut pos = format!("Zeile {}, Spalte {}", group(line + 1), group(col));
+        let mut pos = crate::t!("status.line_col", line = group(line + 1), col = group(col));
         if sel_chars > 0 {
-            pos.push_str(&format!("   ({} markiert)", group(sel_chars)));
+            pos.push_str("   ");
+            pos.push_str(&crate::t!("status.selected", n = group(sel_chars)));
         }
         let cur_lang = d.hl.language.clone();
-        let lang = cur_lang.clone().unwrap_or_else(|| "Nur Text".to_string());
-        let counts = format!("{} Zeichen, {} Zeilen", group(d.len()), group(d.lines()));
+        let lang = cur_lang.clone().unwrap_or_else(|| crate::t!("common.plain_text"));
+        let counts = crate::t!("status.counts", chars = group(d.len()), lines = group(d.lines()));
         let (cur_eol, cur_enc) = (d.eol, d.enc);
-        let mode = if v.overwrite { "ÜB" } else { "EINF" };
+        let overwrite = v.overwrite;
+        let mode = if overwrite { crate::t!("status.ovr") } else { crate::t!("status.ins") };
         let size = if retro { 13.0 } else { 14.0 };
         let txt = |s: &str| RichText::new(s).size(size).color(c.text);
 
@@ -1187,7 +1218,9 @@ impl App {
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             // Reine Textfelder bekommen denselben Innenabstand wie die Knöpfe daneben.
             ui.add_space(4.0);
-            let r = ui.label(txt(mode)).on_hover_text(if mode == "ÜB" { "Überschreiben (Einfg)" } else { "Einfügen (Einfg)" }).rect;
+            let ins = crate::i18n::keys("Ins");
+            let tip = if overwrite { crate::t!("status.ovr_tip", key = ins) } else { crate::t!("status.ins_tip", key = ins) };
+            let r = ui.label(txt(&mode)).on_hover_text(tip).rect;
             ui.add_space(4.0);
             frame(ui, r);
             dot(ui);
@@ -1199,7 +1232,7 @@ impl App {
             let r = ui
                 .menu_button(txt(cur_eol.short()), |ui| eol_menu(ui, pending, cur_eol))
                 .response
-                .on_hover_text(format!("Zeilenende: {}", cur_eol.label()))
+                .on_hover_text(crate::t!("status.eol_tip", eol = cur_eol.label()))
                 .rect;
             frame(ui, r);
             dot(ui);
@@ -1207,7 +1240,7 @@ impl App {
                 .menu_button(txt(&cur_enc.label()), |ui| {
                     encoding_menu(ui, pending, cur_enc);
                     ui.separator();
-                    ui.menu_button("Umwandeln in", |ui| {
+                    ui.menu_button(crate::t!("menu.convert"), |ui| {
                         ui.set_min_width(200.0);
                         for e in [Enc::Utf8, Enc::Utf8Bom, Enc::Utf16Le, Enc::Utf16Be, Enc::Ansi] {
                             mi(ui, pending, e.label().as_str(), "", Action::Convert(e));
@@ -1215,27 +1248,31 @@ impl App {
                     });
                 })
                 .response
-                .on_hover_text("Kodierung")
+                .on_hover_text(crate::t!("menu.encoding"))
                 .rect;
             frame(ui, r);
             dot(ui);
             let r = ui
                 .menu_button(txt(&lang), |ui| language_menu(ui, pending, cur_lang.as_deref()))
                 .response
-                .on_hover_text("Sprache für die Farben")
+                .on_hover_text(crate::t!("status.lang_tip"))
                 .rect;
             frame(ui, r);
         });
     }
 }
 
-/// Zahl mit Tausenderpunkten, z. B. 12.345.
+/// Zahl mit Tausendertrennzeichen der eingestellten Sprache, z. B. 12.345.
 fn group(n: usize) -> String {
+    group_with(n, &crate::t!("status.thousands_sep"))
+}
+
+fn group_with(n: usize, sep: &str) -> String {
     let s = n.to_string();
     let mut out = String::with_capacity(s.len() + s.len() / 3);
     for (i, ch) in s.chars().enumerate() {
         if i > 0 && (s.len() - i) % 3 == 0 {
-            out.push('.');
+            out.push_str(sep);
         }
         out.push(ch);
     }
@@ -1246,9 +1283,10 @@ fn group(n: usize) -> String {
 mod tests {
     #[test]
     fn numbers_get_thousand_dots() {
-        assert_eq!(super::group(0), "0");
-        assert_eq!(super::group(999), "999");
-        assert_eq!(super::group(1000), "1.000");
-        assert_eq!(super::group(1234567), "1.234.567");
+        assert_eq!(super::group_with(0, "."), "0");
+        assert_eq!(super::group_with(999, "."), "999");
+        assert_eq!(super::group_with(1000, "."), "1.000");
+        assert_eq!(super::group_with(1234567, "."), "1.234.567");
+        assert_eq!(super::group_with(1234567, ","), "1,234,567");
     }
 }
