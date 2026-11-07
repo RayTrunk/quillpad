@@ -926,7 +926,7 @@ impl App {
                 ui.label(RichText::new("Dateien").small().color(c.text_dim));
                 let r = ui
                     .add_sized([w, h], TextEdit::singleline(&mut f.filters).hint_text("*.rs *.toml"))
-                    .on_hover_text("Muster mit Leerzeichen oder ; trennen, z. B. *.rs *.md\n!muster schließt Dateien aus, z. B. !*.log\n!\\ordner schließt einen Ordner direkt im Suchordner aus\n!+\\ordner schließt ihn in jeder Tiefe aus");
+                    .on_hover_text("Muster mit Leerzeichen oder ; trennen, z. B. *.rs *.md\n!*.log schließt Dateien aus\n!build/ schließt den Ordner „build“ in jeder Tiefe aus\n!/build/ nur den direkt im Suchordner");
                 if enter(ui, &r) && !job_running {
                     act.push(FindAct::FilesFind);
                 }

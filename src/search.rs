@@ -159,18 +159,31 @@ pub struct FileFilter {
 }
 
 impl FileFilter {
+    /// Schreibweise wie in .gitignore: `*.rs` nimmt auf, `!*.log` schließt Dateien aus,
+    /// `!build/` (auch `!**/build/`) einen Ordner in jeder Tiefe, `!/build/` nur direkt im
+    /// Suchordner. `\` gilt wie `/`.
     pub fn parse(filters: &str) -> FileFilter {
         let mut f = FileFilter::default();
         for part in filters.split([';', ',', ' ']).map(str::trim).filter(|p| !p.is_empty()) {
-            let lower = part.to_lowercase();
-            if let Some(dir) = lower.strip_prefix("!+\\").or_else(|| lower.strip_prefix("!+/")) {
-                f.exclude_all_dirs.push(dir.to_string());
-            } else if let Some(dir) = lower.strip_prefix("!\\").or_else(|| lower.strip_prefix("!/")) {
-                f.exclude_top_dirs.push(dir.to_string());
-            } else if let Some(name) = lower.strip_prefix('!') {
-                f.exclude.push(name.to_string());
-            } else {
+            let lower = part.to_lowercase().replace('\\', "/");
+            let Some(rest) = lower.strip_prefix('!') else {
                 f.include.push(lower);
+                continue;
+            };
+            match rest.strip_suffix('/') {
+                Some(dir) => {
+                    if let Some(top) = dir.strip_prefix('/') {
+                        if !top.is_empty() {
+                            f.exclude_top_dirs.push(top.to_string());
+                        }
+                    } else {
+                        let any = dir.trim_start_matches("**/");
+                        if !any.is_empty() {
+                            f.exclude_all_dirs.push(any.to_string());
+                        }
+                    }
+                }
+                None => f.exclude.push(rest.to_string()),
             }
         }
         f
@@ -270,12 +283,19 @@ mod tests {
         assert!(!name_matches("*.* !*.exe !*.obj", "A.EXE"));
         assert!(!name_matches("!*.log", "a.log"));
         assert!(name_matches("!*.log", "a.txt"));
-        let f = FileFilter::parse("*.* !\\tests !\\bin* !+\\log*");
+        let f = FileFilter::parse("*.* !/tests/ !/bin*/ !log*/ !**/target/");
         assert!(!f.dir_ok("tests", 1));
-        assert!(f.dir_ok("tests", 2), "nur direkt im Suchordner");
+        assert!(f.dir_ok("tests", 2), "/ordner/ gilt nur direkt im Suchordner");
         assert!(!f.dir_ok("bin64", 1));
-        assert!(!f.dir_ok("logs", 3), "in jeder Tiefe");
+        assert!(!f.dir_ok("logs", 3), "ordner/ gilt in jeder Tiefe");
+        assert!(!f.dir_ok("target", 2), "**/ordner/ gilt in jeder Tiefe");
         assert!(f.dir_ok("src", 1));
+        let w = FileFilter::parse("!\\tests\\ !obj\\");
+        assert!(!w.dir_ok("tests", 1) && w.dir_ok("tests", 2), "Backslash wie Schrägstrich");
+        assert!(!w.dir_ok("obj", 4));
+        assert!(FileFilter::parse("!tests").file_ok("readme.txt"));
+        assert!(!FileFilter::parse("!tests").file_ok("tests"), "ohne Schrägstrich am Ende ein Dateimuster");
+        assert!(FileFilter::parse("!tests").dir_ok("tests", 1));
     }
 
     #[test]

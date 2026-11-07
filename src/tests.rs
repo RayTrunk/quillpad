@@ -850,7 +850,7 @@ fn file_search_sees_unsaved_text_and_honours_exclusions() {
     r.typed("Nadel");
     r.app.find.what = "Nadel".into();
     r.app.find.dir = dir.display().to_string();
-    r.app.find.filters = "*.* !*.log !\\tests".into();
+    r.app.find.filters = "*.* !*.log !/tests/".into();
     r.app.find.open = true;
     r.app.start_file_job(None);
     for _ in 0..500 {
