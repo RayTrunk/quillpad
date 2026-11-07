@@ -1,0 +1,20 @@
+Quillpad sous Linux (64 bits)
+
+Installation (pour votre utilisateur, sans droits root) :
+1. Décompresser l'archive :  tar xzf quillpad-<version>-linux-x64.tar.gz
+2. Dans le dossier décompressé :  ./install.sh
+   Quillpad apparaît alors dans le menu des applications et dans « Ouvrir avec » pour les fichiers texte.
+   Le programme est installé dans ~/.local/bin/quillpad.
+Désinstallation :  ./install.sh --uninstall  (vos paramètres dans ~/.config/Quillpad sont conservés)
+
+Sans installation :  ./quillpad-linux  (ou  ./quillpad-linux mon-fichier.txt)
+
+Quillpad a besoin des bibliothèques graphiques fournies par tout bureau Linux
+(libGL/libEGL, libxkbcommon, libwayland sous Wayland). Si elles manquent, sous Debian/Ubuntu :
+  sudo apt install libgl1 libegl1 libxkbcommon0 libxkbcommon-x11-0 libxcursor1 libxi6 libwayland-client0 libwayland-egl1
+
+Les boîtes de dialogue « Ouvrir » et « Enregistrer » nécessitent xdg-desktop-portal ou zenity.
+
+Le programme fourni nécessite glibc 2.39 ou plus récent, par exemple
+Ubuntu 24.04, Debian 13, Fedora 40 ou plus récent. Sur les systèmes plus anciens, compilez-le
+vous-même dans le dossier app (installez d'abord Rust depuis rustup.rs) :  cargo build --release

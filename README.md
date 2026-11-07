@@ -1,46 +1,54 @@
 # Quillpad
 
-Ein schneller Texteditor für Windows und Linux, geschrieben in Rust mit [egui](https://github.com/emilk/egui).
+**English** · [Deutsch](README.de.md) · [Français](README.fr.md)
 
-## Funktionen
+A fast text editor for Windows and Linux, written in Rust with [egui](https://github.com/emilk/egui).
 
-- Tabs, geteilte Ansicht mit gemeinsamem Scrollen, Sitzungen mit ungespeichertem Text
-- Syntaxfarben für über 100 Sprachen, Gliederung, Übersicht und Projektordner
-- Suchleiste mit Live-Zähler, regulären Ausdrücken und Steuerzeichen; Suchen und Ersetzen in Dateien
-- Mehrere Cursor, Blockauswahl, Lesezeichen, Einklappen, Zeilenwerkzeuge, Zahlenfolgen
-- Kodierungen (UTF-8, UTF-16, ANSI und weitere Zeichensätze) und Zeilenenden bleiben beim Speichern erhalten
-- Neun Farbdesigns, darunter Solarized, Nord, Monokai, Sepia, Hoher Kontrast und ein Windows-98-Look
-- Hinweis auf neue Versionen (abschaltbar)
+![Quillpad](docs/screenshots/en-main.png)
 
-## Herunterladen und installieren
+## Features
 
-Fertige Programme gibt es unter [Releases](https://github.com/RayTrunk/quillpad/releases).
+- Tabs, split view with synchronised scrolling, sessions that keep unsaved text
+- Syntax colouring for more than 100 languages, outline, overview map and project folder
+- Search bar with live match counter, regular expressions and escape sequences; find and replace in files
+- Multiple cursors, block selection, bookmarks, folding, line tools, number sequences
+- Encodings (UTF-8, UTF-16, ANSI and other character sets) and line endings are kept when saving
+- Nine colour themes, including Solarized, Nord, Monokai, Sepia, High contrast and a Windows 98 look
+- User interface in English, German and French (follows the system language)
+- Notice when a new version is available (can be turned off)
 
-- **Windows:** `quillpad-<version>-windows-x64-setup.exe` installiert Quillpad ohne Administratorrechte
-  (wahlweise für alle Benutzer) mit Startmenü-Eintrag, „Öffnen mit“ für Textdateien und auf Wunsch dem
-  Kontextmenü „Mit Quillpad bearbeiten“. Wer nichts installieren will, nimmt die einzelne `.exe`.
-- **Linux:** `quillpad-<version>-linux-x64.tar.gz` entpacken und `./install.sh` ausführen; Quillpad
-  erscheint dann im Anwendungsmenü und unter „Öffnen mit“. Details in `LIESMICH-LINUX.txt`.
+![Themes](docs/screenshots/en-themes.png)
 
-Die Programme sind nicht signiert; Windows SmartScreen fragt deshalb beim ersten Start nach.
+## Download and install
 
-Den Installer selbst bauen: `cargo build --release`, dann mit [Inno Setup](https://jrsoftware.org/isinfo.php)
-`ISCC packaging\windows\quillpad.iss`.
+Ready-made programs are available under [Releases](https://github.com/RayTrunk/quillpad/releases).
 
-## Selbst bauen
+- **Windows:** `quillpad-<version>-windows-x64-setup.exe` installs Quillpad without administrator rights
+  (optionally for all users), with a Start menu entry, “Open with” for text files and, if you like, an
+  “Edit with Quillpad” context menu entry. If you prefer not to install anything, use the single `.exe`.
+- **Linux:** unpack `quillpad-<version>-linux-x64.tar.gz` and run `./install.sh`; Quillpad then appears
+  in the application menu and under “Open with”. Details in `README-LINUX.txt`.
 
-Rust von [rustup.rs](https://rustup.rs) installieren, dann:
+The programs are not signed, so Windows SmartScreen asks for confirmation on first start.
+
+## Build it yourself
+
+Install Rust from [rustup.rs](https://rustup.rs), then:
 
 ```
 cargo build --release
 ```
 
-Das Programm liegt danach in `target/release/`. Tests laufen mit `cargo test`.
+The program is then in `target/release/`. Run the tests with `cargo test`.
+To build the Windows installer, run `ISCC packaging\windows\quillpad.iss` with
+[Inno Setup](https://jrsoftware.org/isinfo.php) after the release build.
 
-## Lizenz
+Translations live in `locales/<language>/*.toml`; a test makes sure every language has the same keys.
+
+## License
 
 © 2026 R. Trunk
 
-Quillpad ist freie Software: Du kannst es unter den Bedingungen der
-[GNU General Public License](LICENSE), Version 3 oder (nach deiner Wahl) jeder späteren Version,
-weitergeben und verändern. Quillpad wird ohne jede Gewährleistung verbreitet.
+Quillpad is free software: you can redistribute it and/or modify it under the terms of the
+[GNU General Public License](LICENSE), version 3 or (at your option) any later version.
+Quillpad is distributed without any warranty.

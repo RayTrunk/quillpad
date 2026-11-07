@@ -4,6 +4,8 @@
 # Fertige Programmdateien gehören nicht ins Repository, nur die Anleitung
 /dist/*
 !/dist/LIESMICH-LINUX.txt
+!/dist/README-LINUX.txt
+!/dist/LISEZMOI-LINUX.txt
 
 # Bildschirmfotos aus der automatischen Prüfung (--screenshot)
 /shots/
