@@ -1,6 +1,6 @@
 [package]
 name = "quillpad"
-version = "0.9.0"
+version = "0.9.1"
 edition = "2021"
 
 [dependencies]
@@ -27,6 +27,10 @@ sha2 = "0.10"
 ureq = { version = "2", features = ["json"] }
 
 # Das Programm wird auch im Entwicklungsbau flüssig: Bibliotheken immer optimiert.
+# Bettet unter Windows Programmsymbol und Versionsangaben in die exe ein (build.rs).
+[build-dependencies]
+winresource = "0.1"
+
 [profile.dev]
 opt-level = 1
 
