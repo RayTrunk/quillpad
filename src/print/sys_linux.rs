@@ -3,6 +3,7 @@ use super::cups;
 use super::font::PrintFont;
 use super::{default_paper, paper_named, pdf::write_pdf, Geom, Page, Paper, Printer};
 use std::io::ErrorKind;
+use std::os::unix::fs::OpenOptionsExt;
 use std::process::{Command, Output};
 use std::sync::atomic::{AtomicU32, Ordering};
 
@@ -56,10 +57,12 @@ pub fn print_pages(
     let pdf = write_pdf(pages, g, font, title)?;
     let n = COUNTER.fetch_add(1, Ordering::Relaxed);
     let file = std::env::temp_dir().join(format!("quillpad-{}-{n}.pdf", std::process::id()));
-    // create_new: eine schon vorhandene (womöglich fremde) Datei wird nie überschrieben.
+    // create_new: eine schon vorhandene (womöglich fremde) Datei wird nie überschrieben;
+    // 0o600: nur der eigene Benutzer kann den Inhalt lesen.
     std::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
+        .mode(0o600)
         .open(&file)
         .and_then(|mut f| std::io::Write::write_all(&mut f, &pdf))
         .map_err(|e| format!("{}: {e}", file.display()))?;

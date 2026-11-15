@@ -804,6 +804,32 @@ fn print_rebuilds_after_edit() {
 }
 
 #[test]
+fn print_preview_finishes_after_option_back_and_forth() {
+    let mut r = Rig::new();
+    if print_font_missing(&r) {
+        return;
+    }
+    // Genug Zeilen, damit der Seitenaufbau noch läuft, wenn umgeschaltet wird.
+    let text: String = (1..=30_000).map(|i| format!("Zeile {i} mit etwas Text\n")).collect();
+    r.set_text(&text);
+    r.act(Action::Print);
+    wait_print_pages(&mut r);
+    // Neue Schriftgröße startet einen Seitenaufbau; Farbe aus und gleich wieder an, bevor er fertig ist.
+    let size = print_ui(&mut r).opts.font_size_pt + 2.0;
+    print_ui(&mut r).opts.font_size_pt = size;
+    r.frames(1);
+    let ui = print_ui(&mut r);
+    ui.opts.color = !ui.opts.color;
+    r.frames(1);
+    let ui = print_ui(&mut r);
+    ui.opts.color = !ui.opts.color;
+    r.frames(1);
+    wait_print_pages(&mut r);
+    let pages = print_ui(&mut r).pages.clone().expect("Seiten");
+    assert!(pages[0].runs.iter().all(|x| x.size == size), "Seiten zur neuen Schriftgröße");
+}
+
+#[test]
 fn print_layout_option_reuses_colored_lines() {
     let mut r = Rig::new();
     if print_font_missing(&r) {

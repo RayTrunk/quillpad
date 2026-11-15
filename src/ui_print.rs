@@ -370,6 +370,8 @@ impl App {
                     p.src_gen.fetch_add(1, Ordering::SeqCst);
                     p.layout_gen.fetch_add(1, Ordering::SeqCst);
                     p.rx = None;
+                    // Der abgebrochene Aufbau ist nicht fertig: bei Rückkehr zu diesen Zeilen neu starten.
+                    p.built_for = None;
                     let req = SrcReq { text: d.text.clone(), language: d.hl.language.clone(), range, color, tab_size: tab };
                     p.src_rx = Some((job::spawn_src(req, p.src_gen.clone(), ctx.clone()), src_key));
                 }
