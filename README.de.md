@@ -4,6 +4,8 @@
 
 Ein schneller Texteditor für Windows und Linux, geschrieben in Rust mit [egui](https://github.com/emilk/egui).
 
+**Webseite:** https://raytrunk.github.io/quillpad/
+
 ![Quillpad](docs/screenshots/de-main.png)
 
 ## Funktionen
