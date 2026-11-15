@@ -29,14 +29,20 @@ fn load_face(file: &str) -> Option<(Face, FontArc)> {
     Some((Face { data: Arc::new(bytes), index: 0 }, FontArc::new(parsed)))
 }
 
-/// Feste Abbildung bekannter Schriftnamen auf Normal- und Fettdatei.
-fn known_files(name: &str) -> Option<(&'static str, &'static str)> {
+/// Dateilisten (normal, fett) zu einem Schriftnamen: dieselben wie im Editor
+/// (`FONT_CHOICES`), dazu zwei Namen, die dort fehlen, sonst eine Vermutung nach dem Namen.
+fn name_files(name: &str) -> (Vec<String>, Vec<String>) {
+    let own = |l: &[&str]| l.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    if let Some(c) = crate::ui_chrome::FONT_CHOICES.iter().find(|c| c.0 == name) {
+        return (own(c.1), own(c.2));
+    }
     match name {
-        "Courier New" => Some(("cour.ttf", "courbd.ttf")),
-        "Consolas" => Some(("consola.ttf", "consolab.ttf")),
-        "DejaVu Sans Mono" => Some(("DejaVuSansMono.ttf", "DejaVuSansMono-Bold.ttf")),
-        "Liberation Mono" => Some(("LiberationMono-Regular.ttf", "LiberationMono-Bold.ttf")),
-        _ => None,
+        "DejaVu Sans Mono" => (own(&["DejaVuSansMono.ttf"]), own(&["DejaVuSansMono-Bold.ttf"])),
+        "Liberation Mono" => (own(&["LiberationMono-Regular.ttf"]), own(&["LiberationMono-Bold.ttf"])),
+        _ => {
+            let stem: String = name.to_lowercase().split_whitespace().collect();
+            (vec![format!("{stem}.ttf")], vec![format!("{stem}bold.ttf")])
+        }
     }
 }
 
@@ -55,24 +61,19 @@ fn fc_match(_pattern: &str) -> Option<String> {
 impl PrintFont {
     /// Sucht die Hauptschrift: gewählte Schrift, dann Systemvorgabe, dann DejaVu Sans Mono.
     pub fn load(editor_font: &str) -> Option<PrintFont> {
-        let mut candidates: Vec<(String, Option<String>)> = Vec::new();
-        if let Some((r, b)) = known_files(editor_font) {
-            candidates.push((r.to_string(), Some(b.to_string())));
-        } else {
-            let stem: String = editor_font.to_lowercase().split_whitespace().collect();
-            candidates.push((format!("{stem}.ttf"), Some(format!("{stem}bold.ttf"))));
-        }
+        // Gruppen aus (Normaldateien, Fettdateien); die erste mit lesbarer Normalschrift gewinnt.
+        let mut groups: Vec<(Vec<String>, Vec<String>)> = vec![name_files(editor_font)];
         if cfg!(windows) {
-            candidates.push(("consola.ttf".into(), Some("consolab.ttf".into())));
+            groups.push((vec!["consola.ttf".into()], vec!["consolab.ttf".into()]));
         } else if let Some(r) = fc_match("monospace") {
-            candidates.push((r, fc_match("monospace:bold")));
+            groups.push((vec![r], fc_match("monospace:bold").into_iter().collect()));
         }
-        candidates.push(("DejaVuSansMono.ttf".into(), Some("DejaVuSansMono-Bold.ttf".into())));
+        groups.push((vec!["DejaVuSansMono.ttf".into()], vec!["DejaVuSansMono-Bold.ttf".into()]));
 
         let mut found = None;
-        for (r, b) in candidates {
-            if let Some(main) = load_face(&r) {
-                found = Some((main, b.and_then(|b| load_face(&b))));
+        for (regs, bolds) in groups {
+            if let Some(main) = regs.iter().find_map(|r| load_face(r)) {
+                found = Some((main, bolds.iter().find_map(|b| load_face(b))));
                 break;
             }
         }
@@ -143,6 +144,16 @@ impl Measure for PrintFont {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn print_font_files_match_editor() {
+        for c in crate::ui_chrome::FONT_CHOICES.iter() {
+            let (r, b) = name_files(c.0);
+            assert_eq!(r, c.1.iter().map(|s| s.to_string()).collect::<Vec<_>>(), "{}", c.0);
+            assert_eq!(b, c.2.iter().map(|s| s.to_string()).collect::<Vec<_>>(), "{}", c.0);
+        }
+        assert_eq!(name_files("Foo Bar").0, vec!["foobar.ttf".to_string()]);
+    }
 
     #[test]
     fn print_font_loads_and_measures() {
