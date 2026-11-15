@@ -32,6 +32,9 @@ ureq = { version = "2", features = ["json"] }
 # Übersetzungen: Kataloge im TOML-Format, Sprache des Systems.
 toml = { version = "0.8", default-features = false, features = ["parse"] }
 sys-locale = "0.3"
+# Druck: PDF schreiben (eigene Seiten, Schrift als Untermenge eingebettet).
+pdf-writer = "0.15"
+subsetter = "0.2"
 
 # Das Programm wird auch im Entwicklungsbau flüssig: Bibliotheken immer optimiert.
 # Bettet unter Windows Programmsymbol und Versionsangaben in die exe ein (build.rs).
@@ -43,3 +46,6 @@ opt-level = 1
 
 [profile.dev.package."*"]
 opt-level = 3
+
+[dev-dependencies]
+lopdf = "0.47"

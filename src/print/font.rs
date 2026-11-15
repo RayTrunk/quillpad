@@ -110,6 +110,11 @@ impl PrintFont {
         }
     }
 
+    /// Glyph-ID des Zeichens in der Schrift (face, bold); 0 = fehlt (.notdef).
+    pub(crate) fn glyph_id(&self, face: u8, bold: bool, c: char) -> u16 {
+        self.parsed(face, bold).glyph_id(c).0
+    }
+
     fn unit_advance(font: &FontArc, c: char) -> f32 {
         font.h_advance_unscaled(font.glyph_id(c)) / font.units_per_em().unwrap_or(1000.0)
     }

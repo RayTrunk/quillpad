@@ -5,6 +5,7 @@
 
 pub mod font;
 pub mod layout;
+pub mod pdf;
 
 /// Punkt pro Millimeter.
 pub const MM: f32 = 72.0 / 25.4;
