@@ -321,6 +321,7 @@ impl App {
                 "shortcuts" => self.dialog = Some(Dialog::Shortcuts),
                 "goto" => self.pending.push(Action::GoToDialog),
                 "column" => self.pending.push(Action::ColumnEditor),
+                "selectall" => self.pending.push(Action::Cmd(crate::commands::Cmd::SelectAll)),
                 _ => {}
             }
         }
@@ -785,6 +786,7 @@ impl App {
         d.extra_dirty = from_backup;
         d.large = self.settings.large_file_enabled && text.len() as u64 >= self.settings.large_file_mb.clamp(1, 4096) << 20;
         d.hl.set_language(if d.large { None } else { t.language.clone() });
+        d.hl.manual = t.language_manual;
         d.bookmarks = t.bookmarks.iter().copied().filter(|l| *l < d.lines()).collect();
         Some(id)
     }
@@ -837,6 +839,7 @@ impl App {
                     enc: d.enc.name(),
                     eol: d.eol.name().into(),
                     language: d.hl.language.clone(),
+                    language_manual: d.hl.manual,
                     anchor: main.anchor,
                     head: main.head,
                     top_row: v.top_row,
@@ -1378,7 +1381,11 @@ impl App {
                     d.extra_dirty = true;
                 }
             }
-            Action::SetLanguage(l) => self.cur_doc_mut().hl.set_language(l),
+            Action::SetLanguage(l) => {
+                let d = self.cur_doc_mut();
+                d.hl.set_language(l);
+                d.hl.manual = true;
+            }
             Action::Preferences => self.dialog = Some(Dialog::Prefs),
             Action::SetTheme(t) => {
                 self.settings.theme = t;
@@ -1445,9 +1452,30 @@ impl App {
 
     // ---------- Hauptschleife ----------
 
+    /// Sprache nach einer Änderung neu bestimmen, solange sie nicht von Hand gewählt wurde.
+    /// So wird auch ein neues Dokument farbig, sobald es mit `#!/bin/bash` o. Ä. beginnt.
+    fn auto_language(&mut self) {
+        let d = self.cur_doc_mut();
+        if d.large || d.hl.manual || d.hl.checked_rev == d.rev {
+            return;
+        }
+        d.hl.checked_rev = d.rev;
+        let name = match &d.path {
+            Some(p) => p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+            None => String::new(),
+        };
+        let head = d.slice(0, d.len().min(400));
+        let lang = highlight::detect(&name, &head);
+        if lang != d.hl.language {
+            d.hl.set_language(lang);
+        }
+    }
+
     pub fn frame(&mut self, ctx: &Context) {
         self.sync_views();
-        if self.metrics.is_none() || self.rebuild_metrics {
+        self.auto_language();
+        let ppp_changed = self.metrics.as_ref().is_some_and(|m| m.ppp != ctx.pixels_per_point());
+        if self.metrics.is_none() || self.rebuild_metrics || ppp_changed {
             self.rebuild_metrics = false;
             self.metrics = Some(Metrics::new(ctx, self.settings.font_size));
         }

@@ -127,6 +127,8 @@ pub struct Metrics {
     pub bold: FontId,
     pub line_h: f32,
     pub ch: f32,
+    /// Bildpunkte je Punkt, für die Rundung wie beim Zeichnen.
+    pub ppp: f32,
     widths: HashMap<char, f32>,
     ctx: Context,
 }
@@ -144,6 +146,7 @@ impl Metrics {
             bold,
             line_h: (row * 1.06).ceil().max(row),
             ch,
+            ppp: ctx.pixels_per_point(),
             widths: HashMap::new(),
             ctx: ctx.clone(),
         }
@@ -163,19 +166,23 @@ impl Metrics {
         self.ch * o.tab_size.max(1) as f32
     }
 
+    /// Nächste Spaltenposition. egui rundet beim Setzen eines Textes die Position nach jedem
+    /// Zeichen auf ganze Bildpunkte; hier wird genauso gerechnet, sonst laufen Mausposition,
+    /// Markierung und gezeichneter Text über eine lange Zeile auseinander.
     fn advance(&mut self, x: f32, c: char, tab_w: f32) -> f32 {
-        if c == '\t' {
-            ((x / tab_w).floor() + 1.0) * tab_w
-        } else {
-            x + self.w(c)
-        }
+        let next = if c == '\t' { ((x / tab_w).floor() + 1.0) * tab_w } else { x + self.w(c) };
+        self.round_px(next)
+    }
+
+    pub fn round_px(&self, x: f32) -> f32 {
+        (x * self.ppp).round() / self.ppp
     }
 }
 
 /// Stellen, an denen eine umbrochene Zeile in die nächste Reihe wechselt.
 pub fn wrap_points(s: &str, width: f32, tab_w: f32, m: &mut Metrics) -> Vec<usize> {
     let mut out = Vec::new();
-    if s.is_ascii() && !s.contains('\t') && s.len() as f32 * m.ch <= width {
+    if s.is_ascii() && !s.contains('\t') && s.len() as f32 * m.round_px(m.ch).max(m.ch) <= width {
         return out;
     }
     let chars: Vec<char> = s.chars().collect();
@@ -1088,7 +1095,7 @@ pub fn show(ui: &mut Ui, doc: &mut Document, v: &mut View, o: &EdOpts, m: &mut M
             }
             let font = if bold { m.bold.clone() } else { m.font.clone() };
             let galley = ctx.fonts(|f| f.layout_no_wrap(std::mem::take(run), font, color));
-            let pos = pos2(origin_x + x, r.y + (m.line_h - galley.size().y) * 0.5).round();
+            let pos = pos2(m.round_px(origin_x + x), m.round_px(r.y + (m.line_h - galley.size().y) * 0.5));
             clip_text.galley(pos, galley, color);
         };
         for (i, c) in row_chars.iter().enumerate() {

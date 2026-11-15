@@ -69,6 +69,7 @@ pub struct SessionTab {
     pub enc: String,
     pub eol: String,
     pub language: Option<String>,
+    pub language_manual: bool,
     pub anchor: usize,
     pub head: usize,
     pub top_row: f64,

@@ -986,3 +986,45 @@ fn find_bar_counts_live_and_shows_the_position() {
     assert_eq!(r.app.live_count(), None);
     r.frames(2);
 }
+
+/// Die berechneten Spaltenpositionen (Mausklick, Markierung, Cursor) müssen dort liegen, wo
+/// egui die Zeichen tatsächlich zeichnet, auch bei Bildschirmskalierung und langen Zeilen.
+#[test]
+fn column_positions_match_the_drawn_glyphs() {
+    let line = "VAR=$(ls -la | wc -l)  # eine recht lange Zeile mit vielen Zeichen zum Testen der Markierung WWWW iiii ${XDG_CONFIG_HOME:-$HOME/.config}";
+    for ppp in [1.0_f32, 1.25, 1.5, 1.75] {
+        let mut r = Rig::new();
+        r.ctx.set_pixels_per_point(ppp);
+        r.frames(3);
+        r.set_text(line);
+        r.frames(2);
+        let font = r.app.metrics.as_ref().unwrap().font.clone();
+        let galley = r.ctx.fonts(|f| f.layout_no_wrap(line.to_string(), font, egui::Color32::WHITE));
+        let glyphs = &galley.rows[0].glyphs;
+        let doc = r.app.docs.get(&r.app.cur_view().doc).unwrap();
+        let o = r.app.settings.ed.clone();
+        let m = r.app.metrics.as_mut().unwrap();
+        assert_eq!(m.ppp, ppp, "Maße folgen der Skalierung");
+        for (k, g) in glyphs.iter().enumerate() {
+            let x = crate::editor::line_pos_x(doc, &o, m, k);
+            assert!((x - g.pos.x).abs() < 0.01, "ppp {ppp}, Spalte {k}: berechnet {x}, gezeichnet {}", g.pos.x);
+        }
+    }
+}
+
+#[test]
+fn new_documents_get_their_language_from_the_first_line() {
+    let mut r = Rig::new();
+    assert_eq!(r.app.cur_doc().hl.language, None);
+    r.typed("#!/bin/bash");
+    r.key(Key::Enter, Modifiers::NONE);
+    r.typed("echo hallo");
+    assert_eq!(r.app.cur_doc().hl.language.as_deref(), Some("Bourne Again Shell (bash)"), "beim Tippen erkannt");
+    r.set_text("<?xml version=\"1.0\"?>\n<a/>");
+    assert_eq!(r.app.cur_doc().hl.language.as_deref(), Some("XML"), "beim Einfügen erkannt");
+    r.set_text("nur Text");
+    assert_eq!(r.app.cur_doc().hl.language, None, "ohne Hinweis wieder normaler Text");
+    r.act(Action::SetLanguage(Some("Python".into())));
+    r.set_text("#!/bin/sh\necho");
+    assert_eq!(r.app.cur_doc().hl.language.as_deref(), Some("Python"), "von Hand gewählt bleibt gewählt");
+}

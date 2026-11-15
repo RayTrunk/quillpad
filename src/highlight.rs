@@ -137,20 +137,34 @@ fn make_theme(t: ThemeId) -> Theme {
 pub fn detect(name: &str, text: &str) -> Option<String> {
     let e = engine();
     let path = std::path::Path::new(name);
-    let by_ext = path
-        .extension()
-        .and_then(|x| x.to_str())
-        .and_then(|x| e.by_extension(x));
-    let by_name = path
-        .file_name()
-        .and_then(|x| x.to_str())
-        .and_then(|x| e.by_extension(x));
-    match by_name.or(by_ext) {
-        Some(found) if found.name != "Plain Text" => Some(found.name.clone()),
-        Some(_) => None,
-        None => detect_by_content(text).map(str::to_string),
-    }
+    let file = path.file_name().and_then(|x| x.to_str()).unwrap_or("").to_ascii_lowercase();
+    let ext = path.extension().and_then(|x| x.to_str()).map(str::to_ascii_lowercase);
+    // Endungen, bei denen die mitgelieferte Sammlung danebenliegt oder nichts kennt.
+    let fixed: Option<Option<&str>> = match ext.as_deref() {
+        Some("h") => Some(Some("C++")),
+        Some("ksh") => Some(Some(BASH)),
+        Some("jsx") => Some(Some("JavaScript")),
+        // Die meisten .conf-Dateien sind keine nginx-Einstellungen.
+        Some("conf") if !file.contains("nginx") => Some(None),
+        _ => None,
+    };
+    let by_file = match fixed {
+        Some(lang) => lang.map(str::to_string),
+        None => {
+            let by_ext = ext.as_deref().and_then(|x| e.by_extension(x));
+            let orig = path.file_name().and_then(|x| x.to_str()).unwrap_or("");
+            let by_name = e.by_extension(orig).or_else(|| e.by_extension(&file));
+            match by_name.or(by_ext) {
+                // Ausdrücklich Text (.txt): die Endung geht vor.
+                Some(found) if found.name == "Plain Text" => return None,
+                found => found.map(|f| f.name.clone()),
+            }
+        }
+    };
+    by_file.or_else(|| detect_by_content(text).map(str::to_string))
 }
+
+const BASH: &str = "Bourne Again Shell (bash)";
 
 /// Sprache am Dateianfang erkennen, wenn die Endung nichts sagt. Es zählt nur die erste
 /// nicht leere Zeile: bei `#!` der Name des Interpreters, sonst der Beginn eines Markup-Dokuments.
@@ -166,7 +180,7 @@ pub fn detect_by_content(text: &str) -> Option<&'static str> {
         }
         let name = prog.trim_end_matches(|c: char| c.is_ascii_digit() || c == '.');
         return Some(match name {
-            "sh" | "bash" | "dash" | "ksh" | "zsh" | "ash" => "Bourne Again Shell (bash)",
+            "sh" | "bash" | "dash" | "ksh" | "zsh" | "ash" => BASH,
             "python" | "pypy" => "Python",
             "perl" => "Perl",
             "php" => "PHP",
@@ -198,6 +212,10 @@ pub struct Span {
 
 pub struct DocHl {
     pub language: Option<String>,
+    /// Von Hand gewählt: dann erkennt Quillpad die Sprache nicht mehr selbst.
+    pub manual: bool,
+    /// Stand des Dokuments bei der letzten selbsttätigen Erkennung.
+    pub checked_rev: u64,
     theme: ThemeId,
     checkpoints: Vec<(ParseState, HighlightState)>,
     cur: Option<(usize, ParseState, HighlightState)>,
@@ -208,6 +226,8 @@ impl DocHl {
     pub fn new(language: Option<String>) -> DocHl {
         DocHl {
             language,
+            manual: false,
+            checked_rev: 0,
             theme: ThemeId::Light,
             checkpoints: Vec::new(),
             cur: None,
@@ -392,6 +412,26 @@ mod tests {
         assert_eq!(detect("a.py", "").as_deref(), Some("Python"));
         assert!(detect("a.unbekannt", "").is_none());
         assert!(detect("skript", "#!/bin/bash").is_some());
+    }
+
+    #[test]
+    fn file_names_and_endings_pick_the_right_language() {
+        let d = |n: &str, t: &str| detect(n, t);
+        for n in ["a.sh", "A.SH", "a.bash", "a.zsh", "a.ksh", ".bashrc", ".zshrc", ".profile", "PKGBUILD"] {
+            assert_eq!(d(n, "").as_deref(), Some(BASH), "{n}");
+        }
+        assert_eq!(d("kopf.h", "").as_deref(), Some("C++"), ".h ist C/C++, nicht Objective-C");
+        assert_eq!(d("App.jsx", "").as_deref(), Some("JavaScript"));
+        assert_eq!(d("Makefile", "").as_deref(), Some("Makefile"));
+        assert_eq!(d("nginx.conf", "").as_deref(), Some("nginx"));
+        assert_eq!(d("sites/nginx-site.conf", "").as_deref(), Some("nginx"));
+        assert_eq!(d("fstab.conf", "# Einstellungen\na = 1"), None, ".conf ist meist nicht nginx");
+        assert_eq!(d("dienst.conf", "#!/bin/sh\n").as_deref(), Some(BASH));
+        assert_eq!(d("notiz.txt", "Hallo"), None);
+        assert_eq!(d("notiz.txt", "<?xml version=\"1.0\"?>"), None, "Text bleibt Text");
+        for name in ["C++", "JavaScript", BASH] {
+            assert!(engine().find(name).is_some(), "{name} fehlt in der Sammlung");
+        }
     }
 
     #[test]
