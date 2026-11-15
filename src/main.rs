@@ -72,6 +72,11 @@ fn main() -> eframe::Result {
             .with_app_id("quillpad")
             .with_icon(std::sync::Arc::new(window_icon()))
             .with_drag_and_drop(true),
+        // Unter Wayland (z. B. Hyprland) bekommt ein verdecktes Fenster, etwa auf einem anderen
+        // Arbeitsbereich, keine Bildsignale mehr. Mit VSync blockiert dann das Zeichnen, das
+        // Programm beantwortet die Pings des Compositors nicht und gilt als „nicht reagierend“.
+        // Quillpad zeichnet ohnehin nur bei Bedarf neu, VSync bringt hier nichts.
+        vsync: !cfg!(target_os = "linux"),
         ..Default::default()
     };
     eframe::run_native(

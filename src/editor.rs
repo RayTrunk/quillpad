@@ -1194,7 +1194,9 @@ pub fn show(ui: &mut Ui, doc: &mut Document, v: &mut View, o: &EdOpts, m: &mut M
             clip_text.rect_filled(r, 0.0, pal.caret);
         }
     }
-    if has_focus {
+    // Blinken nur, solange das Fenster selbst den Fokus hat; im Hintergrund kein Neuzeichnen.
+    let window_focused = ctx.input(|i| i.viewport().focused).unwrap_or(true);
+    if has_focus && window_focused {
         let wait = CARET_BLINK_SECS - ((now - v.blink_base) % CARET_BLINK_SECS);
         ctx.request_repaint_after(Duration::from_secs_f64(wait.max(0.02)));
         if let Some(c) = caret_rect {
