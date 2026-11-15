@@ -804,6 +804,27 @@ fn print_rebuilds_after_edit() {
 }
 
 #[test]
+fn print_layout_option_reuses_colored_lines() {
+    let mut r = Rig::new();
+    if print_font_missing(&r) {
+        return;
+    }
+    r.set_text("fn main() {}\nlet x = 1;\n");
+    r.act(Action::Print);
+    wait_print_pages(&mut r);
+    let before = print_ui(&mut r).src_lines().expect("Zeilen");
+    let pages = print_ui(&mut r).pages.clone().expect("Seiten");
+    let ui = print_ui(&mut r);
+    ui.opts.line_numbers = !ui.opts.line_numbers;
+    r.frames(1);
+    wait_print_pages(&mut r);
+    let ui = print_ui(&mut r);
+    // Nur neu umbrochen, nicht neu eingefärbt.
+    assert!(std::sync::Arc::ptr_eq(&before, &ui.src_lines().expect("Zeilen")));
+    assert!(!std::sync::Arc::ptr_eq(&pages, ui.pages.as_ref().expect("Seiten")));
+}
+
+#[test]
 fn empty_regex_match_moves_forward_instead_of_getting_stuck() {
     let mut r = Rig::new();
     r.set_text("a\nb\nc");

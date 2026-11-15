@@ -5,6 +5,9 @@ use crate::print::{self, Measure};
 use crate::t;
 use egui::{pos2, vec2, Align2, Button, Color32, FontId, Key, Sense, Stroke, StrokeKind, Ui};
 
+/// So viel Scrollweg blättert eine Seite.
+const SCROLL_PAGE: f32 = 50.0;
+
 impl App {
     /// Weißes Blatt im Seitenverhältnis des Papiers, darunter das Blättern.
     pub(super) fn print_preview(&self, ui: &mut Ui, p: &mut PrintUi, max_h: f32) {
@@ -17,10 +20,21 @@ impl App {
         }
         let n = p.shown().len();
         // Blättern: Mausrad über dem Blatt, Bild-auf/ab solange der Editor keinen Fokus hat.
+        // Die Bewegung wird gesammelt, damit ein Touchpad nicht bei jedem Bild eine Seite weiterspringt;
+        // eine Rastung des Mausrads (50 px) ist genau eine Seite.
         let mut step = 0i32;
         if resp.hovered() {
-            let dy = ui.input(|i| i.raw_scroll_delta.y);
-            step += if dy > 0.0 { -1 } else if dy < 0.0 { 1 } else { 0 };
+            p.scroll_acc += ui.input(|i| i.raw_scroll_delta.y);
+            while p.scroll_acc >= SCROLL_PAGE - 0.5 {
+                p.scroll_acc -= SCROLL_PAGE;
+                step -= 1;
+            }
+            while p.scroll_acc <= -(SCROLL_PAGE - 0.5) {
+                p.scroll_acc += SCROLL_PAGE;
+                step += 1;
+            }
+        } else {
+            p.scroll_acc = 0.0;
         }
         if !self.editor_focused {
             ui.input(|i| {
@@ -35,7 +49,7 @@ impl App {
         painter.rect_filled(rect, 0.0, Color32::WHITE);
         painter.rect_stroke(rect, 0.0, Stroke::new(1.0_f32, Color32::from_gray(150)), StrokeKind::Outside);
         let clip = painter.with_clip_rect(rect);
-        let busy = !p.ready();
+        let busy = p.busy();
         if let (Some(page), Some(font)) = (p.shown().get(p.page_idx), &p.font) {
             let asc = font.ascent();
             // Die Bildschirmschrift so verkleinern, dass ihre Zeichen nicht breiter sind als die
@@ -62,14 +76,21 @@ impl App {
                     x += font.advance(c, r.bold) * r.size;
                 }
             }
+            // Dieselbe Farbe wie auf dem Papier (`print::GRAY`).
+            let gray = Color32::from_rgb(print::GRAY[0], print::GRAY[1], print::GRAY[2]);
             for &[x0, x1, y] in &page.rules {
                 let y = rect.top() + y * scale;
-                clip.line_segment([pos2(rect.left() + x0 * scale, y), pos2(rect.left() + x1 * scale, y)], Stroke::new(0.6_f32, Color32::from_gray(150)));
+                clip.line_segment([pos2(rect.left() + x0 * scale, y), pos2(rect.left() + x1 * scale, y)], Stroke::new(0.6_f32, gray));
             }
         }
-        if busy {
+        // Abgerissener Thread: dessen Meldung statt „wird berechnet“.
+        let note = match p.error() {
+            Some(e) => Some(e.to_string()),
+            None => busy.then(|| t!("print.building")),
+        };
+        if let Some(note) = note {
             let at = rect.center_bottom() - vec2(0.0, 24.0);
-            let galley = ui.painter().layout_no_wrap(t!("print.building"), FontId::proportional(13.0), Color32::from_gray(60));
+            let galley = ui.painter().layout_no_wrap(note, FontId::proportional(13.0), Color32::from_gray(60));
             let bg = Align2::CENTER_CENTER.anchor_size(at, galley.size()).expand(6.0);
             clip.rect_filled(bg, 3.0, Color32::from_gray(235));
             clip.galley(bg.min + vec2(6.0, 6.0), galley, Color32::from_gray(60));

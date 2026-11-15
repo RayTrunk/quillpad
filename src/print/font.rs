@@ -14,7 +14,7 @@ pub struct Face {
 impl Face {
     /// Familienname (Name-ID 1) aus der Name-Tabelle; bevorzugt der englische Windows-Eintrag.
     /// Braucht nur die GDI-Ausgabe unter Windows (CreateFontW).
-    #[cfg_attr(not(windows), allow(dead_code))]
+    #[cfg(windows)]
     pub fn family_name(&self) -> Option<String> {
         let face = ttf_parser::Face::parse(&self.data, self.index).ok()?;
         let names: Vec<_> = face
@@ -40,9 +40,12 @@ pub struct PrintFont {
 }
 
 /// Liest eine Schriftdatei aus dem Index (Schlüssel: kleingeschriebener Dateiname).
+/// Schriften ohne `glyf`-Tabelle (CFF-Umrisse, etwa `.otf`) fallen weg: Das PDF bettet
+/// alle Schriften als TrueType (FontFile2) ein.
 fn load_face(file: &str) -> Option<(Face, FontArc)> {
     let path = crate::ui_chrome::font_index().get(&file.to_lowercase())?;
     let bytes = std::fs::read(path).ok()?;
+    ttf_parser::Face::parse(&bytes, 0).ok()?.tables().glyf?;
     let parsed = FontVec::try_from_vec_and_index(bytes.clone(), 0).ok()?;
     Some((Face { data: Arc::new(bytes), index: 0 }, FontArc::new(parsed)))
 }
@@ -76,6 +79,16 @@ fn fc_match(_pattern: &str) -> Option<String> {
     None
 }
 
+/// Taugt `bold_file` als echter Fettschnitt zu `regular_file`? Nicht, wenn es dieselbe Datei
+/// ist (z. B. `lucon.ttf` für beides) oder die Grundeinstellung der Schrift nicht fett ist
+/// (variable Schrift wie `CascadiaMono.ttf`). Dann gilt künstliches Fett wie in GDI.
+fn real_bold(regular_file: &str, bold_file: &str, bold_data: &[u8]) -> bool {
+    if regular_file.eq_ignore_ascii_case(bold_file) {
+        return false;
+    }
+    ttf_parser::Face::parse(bold_data, 0).is_ok_and(|f| f.is_bold() || f.weight().to_number() >= 600)
+}
+
 impl PrintFont {
     /// Sucht die Hauptschrift: gewählte Schrift, dann Systemvorgabe, dann DejaVu Sans Mono.
     pub fn load(editor_font: &str) -> Option<PrintFont> {
@@ -90,8 +103,13 @@ impl PrintFont {
 
         let mut found = None;
         for (regs, bolds) in groups {
-            if let Some(main) = regs.iter().find_map(|r| load_face(r)) {
-                found = Some((main, bolds.iter().find_map(|b| load_face(b))));
+            if let Some((file, main)) = regs.iter().find_map(|r| Some((r, load_face(r)?))) {
+                let bold = bolds
+                    .iter()
+                    .find_map(|b| Some((b, load_face(b)?)))
+                    .filter(|(b, (f, _))| real_bold(file, b, &f.data))
+                    .map(|(_, f)| f);
+                found = Some((main, bold));
                 break;
             }
         }
@@ -192,6 +210,27 @@ mod tests {
         assert!(f.advance('\u{1F600}', false) > 0.0);
         assert!(f.ascent() > 0.0);
         assert_eq!(f.face_data(0, true).index, 0);
+        if crate::ui_chrome::font_index().contains_key("courbd.ttf") {
+            assert!(f.bold.is_some(), "courbd.ttf ist ein echter Fettschnitt");
+        }
+        #[cfg(windows)]
         assert!(f.regular.family_name().is_some_and(|n| !n.is_empty()));
+    }
+
+    #[test]
+    fn print_font_same_file_is_no_bold() {
+        assert!(!real_bold("lucon.ttf", "lucon.ttf", &[]));
+        assert!(!real_bold("CascadiaMono.ttf", "cascadiamono.ttf", &[]));
+        assert!(!real_bold("a.ttf", "b.ttf", b"keine Schrift"));
+    }
+
+    #[test]
+    fn print_font_lucida_console_uses_synthetic_bold() {
+        if !crate::ui_chrome::font_index().contains_key("lucon.ttf") {
+            eprintln!("lucon.ttf fehlt, Test übersprungen");
+            return;
+        }
+        let f = PrintFont::load("Lucida Console").expect("Schrift");
+        assert!(f.bold.is_none(), "lucon.ttf ist kein eigener Fettschnitt");
     }
 }

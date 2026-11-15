@@ -362,7 +362,19 @@ fn highlight_line(
 /// Abschnitte für den Druck: feste Papierfarben, unabhängig vom Bildschirmdesign.
 /// Geparst wird ab Zeile 0, damit mehrzeilige Konstrukte stimmen. Zeilen ohne Sprache
 /// oder über MAX_LINE bestehen aus einem einzigen Abschnitt in Textfarbe.
+#[cfg(test)]
 pub fn paper_spans(text: &Rope, language: Option<&str>, mono: bool, lines: std::ops::Range<usize>) -> Vec<Vec<Span>> {
+    paper_spans_until(text, language, mono, lines, &|| false).expect("ohne Abbruch")
+}
+
+/// Wie `paper_spans`, fragt aber alle 256 Zeilen `stop`; true bricht ab (None).
+pub fn paper_spans_until(
+    text: &Rope,
+    language: Option<&str>,
+    mono: bool,
+    lines: std::ops::Range<usize>,
+    stop: &dyn Fn() -> bool,
+) -> Option<Vec<Vec<Span>>> {
     let e = engine();
     let pc = crate::theme::paper_syntax(mono);
     let fg = Color32::from_rgb((pc.fg >> 16) as u8, (pc.fg >> 8) as u8, pc.fg as u8);
@@ -385,7 +397,7 @@ pub fn paper_spans(text: &Rope, language: Option<&str>, mono: bool, lines: std::
     };
     let lines = lines.start.min(total)..lines.end.min(total);
     let Some((set, syntax)) = language.and_then(|l| e.find(l)) else {
-        return lines.map(plain).collect();
+        return Some(lines.map(plain).collect());
     };
     let theme = &e.paper[usize::from(mono)];
     let highlighter = Highlighter::new(theme);
@@ -393,6 +405,9 @@ pub fn paper_spans(text: &Rope, language: Option<&str>, mono: bool, lines: std::
     let mut hs = HighlightState::new(&highlighter, ScopeStack::new());
     let mut out = Vec::with_capacity(lines.len());
     for line in 0..lines.end {
+        if line % 256 == 0 && stop() {
+            return None;
+        }
         let (mut spans, long) = highlight_line(text.line(line), &mut ps, &mut hs, &highlighter, set);
         if line < lines.start {
             continue;
@@ -414,7 +429,7 @@ pub fn paper_spans(text: &Rope, language: Option<&str>, mono: bool, lines: std::
         }
         out.push(spans);
     }
-    out
+    Some(out)
 }
 
 /// Kommentarzeichen je Sprache: (Zeile, Block)

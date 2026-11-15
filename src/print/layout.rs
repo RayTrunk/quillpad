@@ -66,27 +66,38 @@ fn attrs(l: &SrcLine, n: usize) -> Vec<Attr> {
 
 /// Zerlegt eine Zeile in Anzeigezeilen (Bereiche in `chars`). Bricht am letzten
 /// Leerzeichen, das noch passt, sonst hart; mindestens ein Zeichen pro Zeile.
+/// Leerzeichen vor dem ersten sichtbaren Zeichen der Anzeigezeile (Einrückung) sind
+/// keine Bruchstelle, sonst bliebe eine leere Zeile mit der Zeilennummer stehen.
 fn wrap(chars: &[char], at: &[Attr], avail: f32, tab: f32, size: f32, m: &dyn Measure) -> Vec<(usize, usize)> {
     let mut rows = Vec::new();
     let mut start = 0;
     loop {
-        let (mut x, mut space, mut i) = (0.0f32, None, start);
+        let (mut x, mut space, mut seen, mut i) = (0.0f32, None, false, start);
+        let mut end = None;
         while i < chars.len() {
             let c = chars[i];
             let nx = if c == '\t' { (x / tab).floor() * tab + tab } else { x + m.advance(c, at[i].1) * size };
             if nx > avail + EPS && i > start {
+                // Das überstehende Zeichen ist selbst ein Leerzeichen: das Wort davor passt noch.
+                if c == ' ' {
+                    end = Some(i + 1);
+                }
                 break;
             }
             if c == ' ' {
-                space = Some(i);
+                if seen {
+                    space = Some(i);
+                }
+            } else {
+                seen = true;
             }
             x = nx;
             i += 1;
         }
-        let end = match space {
+        let end = end.unwrap_or(match space {
             Some(s) if i < chars.len() => s + 1,
             _ => i,
-        };
+        });
         rows.push((start, end));
         if end >= chars.len() {
             return rows;
@@ -95,7 +106,13 @@ fn wrap(chars: &[char], at: &[Attr], avail: f32, tab: f32, size: f32, m: &dyn Me
     }
 }
 
+#[cfg(test)]
 pub fn paginate(src: &[SrcLine], o: &LayoutOpts, g: &Geom, m: &dyn Measure) -> Vec<Page> {
+    paginate_until(src, o, g, m, &|| false).expect("ohne Abbruch")
+}
+
+/// Wie `paginate`, fragt aber alle 256 Zeilen `stop`; true bricht ab (None).
+pub fn paginate_until(src: &[SrcLine], o: &LayoutOpts, g: &Geom, m: &dyn Measure, stop: &dyn Fn() -> bool) -> Option<Vec<Page>> {
     let size = o.size;
     let lh = 1.2 * size;
     let asc = m.ascent() * size;
@@ -113,7 +130,10 @@ pub fn paginate(src: &[SrcLine], o: &LayoutOpts, g: &Geom, m: &dyn Measure) -> V
 
     let mut pages = vec![Page::default()];
     let mut slot = 0;
-    for l in src {
+    for (k, l) in src.iter().enumerate() {
+        if k % 256 == 0 && stop() {
+            return None;
+        }
         let chars: Vec<char> = l.text.chars().collect();
         let at = attrs(l, chars.len());
         for (n, &(a, b)) in wrap(&chars, &at, avail, tab, size, m).iter().enumerate() {
@@ -157,7 +177,7 @@ pub fn paginate(src: &[SrcLine], o: &LayoutOpts, g: &Geom, m: &dyn Measure) -> V
             put(&mut p.runs, &f, fx, g.top + (total_lines - 1) as f32 * lh + asc, size, m);
         }
     }
-    pages
+    Some(pages)
 }
 
 #[cfg(test)]
@@ -222,6 +242,34 @@ mod tests {
         let texts: Vec<&str> = pages[0].runs.iter().map(|r| r.text.as_str()).collect();
         assert_eq!(texts, ["1", "aaaa bbbb cccc dddd ", "eeee ffff", "2",
             &"x".repeat(20), &"x".repeat(20), &"x".repeat(10)]);
+    }
+
+    #[test]
+    fn paginate_indent_stays_with_text() {
+        let mut o = opts();
+        o.line_numbers = true;
+        let src = [line(1, &format!("    {}", "x".repeat(50)))];
+        let pages = paginate(&src, &o, &narrow(20.0), &Fixed);
+        let texts: Vec<&str> = pages[0].runs.iter().map(|r| r.text.as_str()).collect();
+        let first = format!("    {}", "x".repeat(16));
+        assert_eq!(texts, ["1", first.as_str(), &"x".repeat(20), &"x".repeat(14)]);
+    }
+
+    #[test]
+    fn paginate_word_at_margin_stays_on_row() {
+        let src = [line(1, "aaaa bbbb cccc ddddd eeee")];
+        let mut o = opts();
+        o.line_numbers = true;
+        let pages = paginate(&src, &o, &narrow(20.0), &Fixed);
+        let texts: Vec<&str> = pages[0].runs.iter().map(|r| r.text.as_str()).collect();
+        assert_eq!(texts, ["1", "aaaa bbbb cccc ddddd ", "eeee"]);
+    }
+
+    #[test]
+    fn paginate_until_stops() {
+        let src: Vec<SrcLine> = (0..1000).map(|i| line(i + 1, "a")).collect();
+        assert!(paginate_until(&src, &opts(), &a4(), &Fixed, &|| true).is_none());
+        assert!(paginate_until(&src, &opts(), &a4(), &Fixed, &|| false).is_some());
     }
 
     #[test]

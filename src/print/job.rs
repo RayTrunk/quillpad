@@ -2,24 +2,32 @@
 //! Nichts davon läuft im UI-Thread; jedes Ergebnis kommt über einen Kanal und
 //! weckt die Oberfläche mit `request_repaint`.
 use super::font::PrintFont;
-use super::{layout::paginate, Geom, LayoutOpts, Page, SrcLine};
-use crate::highlight::{paper_spans, Span};
+use super::{layout::paginate_until, Geom, LayoutOpts, Page, SrcLine};
+use crate::highlight::{paper_spans_until, Span};
 use egui::Color32;
 use ropey::Rope;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{channel, Receiver};
 use std::sync::Arc;
 
 /// Ab so vielen Zeilen wird schwarz gedruckt (das Einfärben ab Zeile 0 dauert sonst zu lange).
 pub const COLOR_MAX_LINES: usize = 200_000;
 
-pub struct LayoutReq {
+/// Eingaben für das Einfärben: hängt nur von Text, Markierung, Farbe, Tabweite und Sprache ab.
+pub struct SrcReq {
     pub text: Rope,
     pub language: Option<String>,
     /// Zeichenbereich der Markierung; None = ganzes Dokument.
     pub range: Option<(usize, usize)>,
+    pub color: bool,
+    pub tab_size: usize,
+}
+
+/// Eingaben für den Seitenaufbau aus schon eingefärbten Zeilen.
+pub struct LayoutReq {
+    pub src: Arc<Vec<SrcLine>>,
     pub opts: LayoutOpts,
     pub geom: Geom,
-    pub color: bool,
     pub font: Arc<PrintFont>,
 }
 
@@ -34,14 +42,27 @@ pub fn spawn<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static, ctx: egu
     rx
 }
 
-pub fn spawn_layout(req: LayoutReq, ctx: egui::Context) -> Receiver<Vec<Page>> {
+/// Abbruchprüfung für einen Auftrag: veraltet, sobald jemand `generation` weiterzählt.
+fn stale_check(generation: Arc<AtomicU64>) -> impl Fn() -> bool {
+    let mine = generation.load(Ordering::SeqCst);
+    move || generation.load(Ordering::SeqCst) != mine
+}
+
+/// Färbt die Zeilen ein. None = abgebrochen, weil ein neuerer Auftrag läuft.
+pub fn spawn_src(req: SrcReq, generation: Arc<AtomicU64>, ctx: egui::Context) -> Receiver<Option<Arc<Vec<SrcLine>>>> {
+    let stop = stale_check(generation);
     spawn(
         move || {
-            let src = src_lines(&req.text, req.language.as_deref(), req.range, req.color, req.opts.tab_size);
-            paginate(&src, &req.opts, &req.geom, req.font.as_ref())
+            src_lines_until(&req.text, req.language.as_deref(), req.range, req.color, req.tab_size, &stop).map(Arc::new)
         },
         ctx,
     )
+}
+
+/// Umbricht die Zeilen in Seiten. None = abgebrochen, weil ein neuerer Auftrag läuft.
+pub fn spawn_layout(req: LayoutReq, generation: Arc<AtomicU64>, ctx: egui::Context) -> Receiver<Option<Arc<Vec<Page>>>> {
+    let stop = stale_check(generation);
+    spawn(move || paginate_until(&req.src, &req.opts, &req.geom, req.font.as_ref(), &stop).map(Arc::new), ctx)
 }
 
 pub fn spawn_output(f: impl FnOnce() -> Result<String, String> + Send + 'static, ctx: egui::Context) -> Receiver<Result<String, String>> {
@@ -80,9 +101,22 @@ fn column(chars: &[char], n: usize, tab: usize) -> usize {
 /// Die zu druckenden Zeilen mit Papierfarben. Bei einer Markierung beginnt die erste
 /// Zeile am Auswahlstart, mit Leerzeichen bis zu dessen Spalte aufgefüllt; die
 /// Zeilennummern bleiben die des Dokuments.
+#[cfg(test)]
 pub fn src_lines(text: &Rope, language: Option<&str>, range: Option<(usize, usize)>, color: bool, tab: usize) -> Vec<SrcLine> {
+    src_lines_until(text, language, range, color, tab, &|| false).expect("ohne Abbruch")
+}
+
+/// Wie `src_lines`, fragt aber alle 256 Zeilen `stop`; true bricht ab (None).
+pub fn src_lines_until(
+    text: &Rope,
+    language: Option<&str>,
+    range: Option<(usize, usize)>,
+    color: bool,
+    tab: usize,
+    stop: &dyn Fn() -> bool,
+) -> Option<Vec<SrcLine>> {
     let total = text.len_lines();
-    let language = language.filter(|_| total <= COLOR_MAX_LINES);
+    let language = language.filter(|_| total < COLOR_MAX_LINES);
     let (first, last, a, b) = match range {
         Some((a, b)) => {
             let (a, b) = (a.min(b).min(text.len_chars()), a.max(b).min(text.len_chars()));
@@ -103,9 +137,12 @@ pub fn src_lines(text: &Rope, language: Option<&str>, range: Option<(usize, usiz
             (0, last, None, None)
         }
     };
-    let spans = paper_spans(text, language, !color, first..last + 1);
+    let spans = paper_spans_until(text, language, !color, first..last + 1, stop)?;
     let mut out = Vec::with_capacity(last + 1 - first);
     for (l, sp) in (first..=last).zip(spans) {
+        if l % 256 == 0 && stop() {
+            return None;
+        }
         let chars = line_chars(text, l);
         let start = text.line_to_char(l);
         let from = if l == first { a.map_or(0, |a| (a - start).min(chars.len())) } else { 0 };
@@ -119,7 +156,7 @@ pub fn src_lines(text: &Rope, language: Option<&str>, range: Option<(usize, usiz
         let body: String = chars[from..to.max(from)].iter().collect();
         out.push(SrcLine { number: l + 1, text: format!("{}{body}", " ".repeat(pad)), spans: line_spans });
     }
-    out
+    Some(out)
 }
 
 #[cfg(test)]
@@ -144,5 +181,17 @@ mod tests {
         let v = src_lines(&text, None, None, true, 4);
         assert_eq!(v.iter().map(|l| l.text.as_str()).collect::<Vec<_>>(), ["a", "b"]);
         assert_eq!(src_lines(&Rope::from_str(""), None, None, true, 4).len(), 1);
+    }
+
+    #[test]
+    fn print_src_lines_until_stops_when_stale() {
+        let text = Rope::from_str(&"fn a() {}\n".repeat(1000));
+        let generation = Arc::new(AtomicU64::new(0));
+        let stop = stale_check(generation.clone());
+        assert!(!stop());
+        assert!(src_lines_until(&text, Some("Rust"), None, true, 4, &stop).is_some());
+        generation.fetch_add(1, Ordering::SeqCst);
+        assert!(stop());
+        assert!(src_lines_until(&text, Some("Rust"), None, true, 4, &stop).is_none());
     }
 }

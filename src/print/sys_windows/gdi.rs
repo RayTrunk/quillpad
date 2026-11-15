@@ -270,7 +270,8 @@ mod tests {
             texts.iter().enumerate().map(|(i, t)| SrcLine { number: i + 1, text: t.clone(), spans: Vec::new() }).collect();
         let pages = paginate(&src, &o, &g, &font);
         assert!(pages.len() >= 2);
-        let out = Path::new("E:/Claude/Quill/app/.superpowers/sdd/2026-11-15-drucken/gdi.pdf");
+        let out = std::env::temp_dir().join(format!("quillpad-gdi-test-{}.pdf", std::process::id()));
+        let out = out.as_path();
         let _ = std::fs::remove_file(out);
         print_to(PDF_PRINTER, &pages[..2], &g, &font, "GDI-Test", 1, false, Some(out)).expect("Druck");
         // Der Spooler schreibt die Datei nach EndDoc, etwas Geduld.

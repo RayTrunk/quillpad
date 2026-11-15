@@ -188,8 +188,5 @@ mod tests {
         let text = doc.extract_text(&[1]).expect("Text");
         assert!(text.contains("fn main"), "{text:?}");
         assert!(text.contains("Grüße"), "{text:?}");
-        if std::env::var_os("QUILL_SAMPLE_PDF").is_some() {
-            let _ = std::fs::write(std::env::var("QUILL_SAMPLE_PDF").unwrap(), &pdf);
-        }
     }
 }

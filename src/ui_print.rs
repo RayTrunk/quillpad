@@ -5,12 +5,13 @@ use crate::app::{App, Dialog};
 use crate::doc::DocId;
 use crate::i18n::Lang;
 use crate::print::font::PrintFont;
-use crate::print::job::{self, LayoutReq, COLOR_MAX_LINES};
-use crate::print::{self, Geom, LayoutOpts, Page, Paper, Printer, MM};
+use crate::print::job::{self, LayoutReq, SrcReq, COLOR_MAX_LINES};
+use crate::print::{self, Geom, LayoutOpts, Page, Paper, Printer, SrcLine, MM};
 use crate::settings::PrintSettings;
 use crate::t;
 use egui::{vec2, Align2, Button, Color32, Context, Key, Ui};
 use std::hash::{DefaultHasher, Hash, Hasher};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, TryRecvError};
 use std::sync::Arc;
 
@@ -25,6 +26,11 @@ pub enum PageSel {
 
 /// Ergebnis von Drucken oder Als PDF: Druckername bzw. Pfad, sonst die Fehlermeldung.
 pub type OutRx = Receiver<Result<String, String>>;
+
+/// Fertige Seiten; None = abgebrochen, weil veraltet.
+type PagesRx = Receiver<Option<Arc<Vec<Page>>>>;
+/// Eingefärbte Zeilen; None = abgebrochen, weil veraltet.
+type SrcRx = Receiver<Option<Arc<Vec<SrcLine>>>>;
 
 /// Was die Schaltflächen im Fenster ausgelöst haben.
 enum Choice {
@@ -48,14 +54,28 @@ pub struct PrintUi {
     pub(crate) sel: PageSel,
     /// Zuletzt eingegebener Bereich, solange „alle“ oder „Markierung“ gewählt ist.
     last_range: (u32, u32),
-    pub(crate) pages: Option<Vec<Page>>,
+    pub(crate) pages: Option<Arc<Vec<Page>>>,
     /// Geometrie der Seiten in `pages`.
     geom: Option<Geom>,
     /// Laufender Seitenaufbau und die Geometrie, für die er rechnet.
-    rx: Option<(Receiver<Vec<Page>>, Geom)>,
+    rx: Option<(PagesRx, Geom)>,
+    /// Zählt weiter, sobald ein Seitenaufbau veraltet ist; der alte bricht dann ab.
+    layout_gen: Arc<AtomicU64>,
     page_idx: usize,
-    /// (doc.rev, Hash der Optionen) des zuletzt gestarteten Seitenaufbaus.
+    /// (Schlüssel der Zeilen, Hash der Seitenoptionen) des zuletzt gestarteten Seitenaufbaus.
     built_for: Option<(u64, u64)>,
+    /// Eingefärbte Zeilen mit ihrem Schlüssel (doc.rev, Markierung, Farbe, Tabweite, Sprache).
+    /// Ändern sich nur Seitenoptionen, wird nur neu umbrochen, nicht neu eingefärbt.
+    src: Option<(u64, Arc<Vec<SrcLine>>)>,
+    /// Laufendes Einfärben und sein Schlüssel.
+    src_rx: Option<(SrcRx, u64)>,
+    /// Schlüssel des zuletzt gestarteten Einfärbens.
+    src_for: Option<u64>,
+    src_gen: Arc<AtomicU64>,
+    /// Ein Hintergrund-Thread ist abgerissen: Meldung statt „wird berechnet“.
+    error: Option<String>,
+    /// Gesammelte Scrollbewegung über der Vorschau (Touchpad).
+    scroll_acc: f32,
     font: Option<Arc<PrintFont>>,
     font_rx: Option<Receiver<Option<PrintFont>>>,
     /// Beim ersten Bild den Fokus vom Editor holen, sonst blättert Bild-auf/ab auch dort.
@@ -87,27 +107,65 @@ fn today() -> String {
     chrono::Local::now().format(fmt).to_string()
 }
 
+/// Papier ohne Drucker: die Wahl, sonst A4 bzw. Letter.
+fn fallback_paper(choice: Option<&str>) -> Paper {
+    choice.and_then(print::paper_named).unwrap_or_else(print::default_paper)
+}
+
+impl Drop for PrintUi {
+    /// Fenster zu: laufende Hintergrundarbeit abbrechen.
+    fn drop(&mut self) {
+        self.src_gen.fetch_add(1, Ordering::SeqCst);
+        self.layout_gen.fetch_add(1, Ordering::SeqCst);
+    }
+}
+
 impl PrintUi {
+    /// Seiten zum letzten Stand fertig (Schrift, Zeilen, Umbruch), kein Thread abgerissen.
+    fn pages_ready(&self) -> bool {
+        self.pages.is_some() && self.rx.is_none() && self.src_rx.is_none() && self.font.is_some() && self.error.is_none()
+    }
+
     /// Alles da: Schrift, Drucker, Papier und Seiten zum letzten Stand.
     pub(crate) fn ready(&self) -> bool {
-        self.pages.is_some()
-            && self.rx.is_none()
-            && self.font_rx.is_none()
-            && self.printers_rx.is_none()
-            && self.paper_rx.is_none()
+        self.pages_ready() && self.font_rx.is_none() && self.printers_rx.is_none() && self.paper_rx.is_none()
+    }
+
+    /// Für „Als PDF …“ genügen Schrift, Papier und Seiten; die Druckerliste darf noch fehlen.
+    pub(crate) fn pdf_ready(&self) -> bool {
+        self.pages_ready() && self.paper.is_some()
+    }
+
+    /// Es wird noch gerechnet (und kein Thread ist abgerissen).
+    pub(crate) fn busy(&self) -> bool {
+        !self.ready() && self.error.is_none()
+    }
+
+    /// Indizes der gedruckten Seiten in `pages`.
+    fn shown_range(&self) -> (usize, usize) {
+        let n = self.pages.as_ref().map_or(0, |v| v.len());
+        match self.sel {
+            PageSel::Range(a, b) => clamp_range(a, b, n).unwrap_or((0, 0)),
+            _ => (0, n),
+        }
     }
 
     /// Die Seiten, die gedruckt werden: nach dem Umbruch auf den Bereich gefiltert,
     /// damit „Seite x von N“ die Gesamtzahl behält.
     pub(crate) fn shown(&self) -> &[Page] {
-        let pages = self.pages.as_deref().unwrap_or(&[]);
-        match self.sel {
-            PageSel::Range(a, b) => match clamp_range(a, b, pages.len()) {
-                Some((i, j)) => &pages[i..j],
-                None => &[],
-            },
-            _ => pages,
-        }
+        let (i, j) = self.shown_range();
+        self.pages.as_deref().map_or(&[], |v| &v[i..j])
+    }
+
+    /// Die zuletzt eingefärbten Zeilen (für Tests).
+    #[cfg(test)]
+    pub(crate) fn src_lines(&self) -> Option<Arc<Vec<SrcLine>>> {
+        self.src.as_ref().map(|(_, s)| s.clone())
+    }
+
+    /// Meldung eines abgerissenen Hintergrund-Threads.
+    fn error(&self) -> Option<&str> {
+        self.error.as_deref()
     }
 
     fn printer_list(&self) -> &[Printer] {
@@ -124,7 +182,7 @@ impl PrintUi {
             Some(p) => self.paper_rx = Some(job::spawn(move || print::paper_for(&p, choice.as_deref()), ctx.clone())),
             None => {
                 self.paper_rx = None;
-                self.paper = Some(choice.as_deref().and_then(print::paper_named).unwrap_or_else(print::default_paper));
+                self.paper = Some(fallback_paper(choice.as_deref()));
             }
         }
     }
@@ -143,6 +201,7 @@ impl PrintUi {
         }
         if let Some(rx) = &self.printers_rx {
             if let Some(list) = recv(rx) {
+                let list = list.and_then(|l| l);
                 self.printers_rx = None;
                 let pick = list.as_ref().ok().and_then(|v| {
                     let saved = self.opts.printer.as_deref();
@@ -159,25 +218,51 @@ impl PrintUi {
         }
         if let Some(rx) = &self.paper_rx {
             if let Some(p) = recv(rx) {
-                self.paper = Some(p);
                 self.paper_rx = None;
+                match p {
+                    Ok(p) => self.paper = Some(p),
+                    Err(e) => self.error = Some(e),
+                }
+            }
+        }
+        if let Some((rx, key)) = &self.src_rx {
+            if let Some(src) = recv(rx) {
+                let key = *key;
+                self.src_rx = None;
+                match src {
+                    Ok(Some(src)) => self.src = Some((key, src)),
+                    // Abgebrochen: beim nächsten Bild neu starten.
+                    Ok(None) => self.src_for = None,
+                    Err(e) => self.error = Some(e),
+                }
             }
         }
         if let Some((rx, g)) = &self.rx {
             if let Some(pages) = recv(rx) {
-                self.geom = Some(*g);
-                self.pages = Some(pages);
+                let g = *g;
                 self.rx = None;
+                match pages {
+                    Ok(Some(pages)) => {
+                        self.geom = Some(g);
+                        self.pages = Some(pages);
+                    }
+                    Ok(None) => self.built_for = None,
+                    Err(e) => self.error = Some(e),
+                }
             }
         }
         true
     }
 }
 
-/// Wert aus dem Kanal, falls schon da. Ein abgerissener Kanal (Thread abgestürzt) liefert nichts;
-/// dann bleibt das Fenster beim Hinweis „wird berechnet“, statt abzustürzen.
-fn recv<T>(rx: &Receiver<T>) -> Option<T> {
-    rx.try_recv().ok()
+/// Wert aus dem Kanal, falls schon da. Ein abgerissener Kanal (Thread abgestürzt) liefert
+/// eine Fehlermeldung; das Fenster zeigt sie, statt ewig „wird berechnet“ anzuzeigen.
+fn recv<T>(rx: &Receiver<T>) -> Option<Result<T, String>> {
+    match rx.try_recv() {
+        Ok(v) => Some(Ok(v)),
+        Err(TryRecvError::Empty) => None,
+        Err(TryRecvError::Disconnected) => Some(Err(t!("print.lost"))),
+    }
 }
 
 impl App {
@@ -204,7 +289,9 @@ impl App {
             printers: None,
             printers_rx: Some(job::spawn(print::printers, ctx.clone())),
             printer: None,
-            paper: None,
+            // Bis der Drucker sein Papier meldet, gilt die Wahl bzw. A4/Letter; so kann
+            // „Als PDF …“ schon vor der Druckerliste fertig sein.
+            paper: Some(fallback_paper(self.settings.print.paper.as_deref())),
             paper_rx: None,
             copies: 1,
             sel: PageSel::All,
@@ -212,8 +299,15 @@ impl App {
             pages: None,
             geom: None,
             rx: None,
+            layout_gen: Arc::new(AtomicU64::new(0)),
             page_idx: 0,
             built_for: None,
+            src: None,
+            src_rx: None,
+            src_for: None,
+            src_gen: Arc::new(AtomicU64::new(0)),
+            error: None,
+            scroll_acc: 0.0,
             font: None,
             font_rx: Some(job::spawn(move || PrintFont::load(&font_name), ctx)),
             focus: true,
@@ -226,14 +320,12 @@ impl App {
         if self.dialog.is_some() {
             return;
         }
-        let Some((rx, pdf)) = &self.print_rx else { return };
-        let pdf = *pdf;
-        let res = match rx.try_recv() {
-            Ok(r) => r,
-            Err(TryRecvError::Empty) => return,
-            Err(TryRecvError::Disconnected) => Err(t!("print.lost")),
+        // Mehrere Aufträge können gleichzeitig laufen; je Bild wird ein fertiger gemeldet.
+        let Some((i, res)) = self.print_rx.iter().enumerate().find_map(|(i, (rx, _))| Some((i, recv(rx)?))) else {
+            return;
         };
-        self.print_rx = None;
+        let (_, pdf) = self.print_rx.remove(i);
+        let res = res.and_then(|r| r);
         let text = match res {
             Ok(path) if pdf => t!("print.pdf_saved", path = path),
             Ok(printer) => t!("print.sent", printer = printer),
@@ -243,23 +335,53 @@ impl App {
         self.message(&t!("app.print"), text);
     }
 
-    /// Startet den Seitenaufbau neu, wenn sich Text, Optionen oder Papier geändert haben.
+    /// Startet Einfärben und Seitenaufbau neu, wenn sich Text, Optionen oder Papier geändert
+    /// haben. Ändern sich nur Seitenoptionen (Größe, Ränder, Zeilennummern …), wird nur neu
+    /// umbrochen; ein veralteter Auftrag bricht ab.
     fn want_layout(&self, p: &mut PrintUi, ctx: &Context) {
         let (Some(font), Some(paper), Some(d)) = (&p.font, &p.paper, self.docs.get(&p.doc)) else { return };
         let o = p.opts.clamped();
         let geom = page_geom(paper, o.margin_mm);
-        let color = o.color && d.lines() <= COLOR_MAX_LINES;
+        let color = o.color && d.lines() < COLOR_MAX_LINES;
         let range = if p.sel == PageSel::Selection { self.print_range(p.doc) } else { None };
         let (name, date, tab) = (d.name(), today(), self.settings.ed.tab_size);
         let mut h = DefaultHasher::new();
-        (o.font_size_pt.to_bits(), o.line_numbers, o.header_footer, color, range, tab).hash(&mut h);
-        (&name, &date, &d.hl.language).hash(&mut h);
+        (d.rev, range, color, tab, &d.hl.language).hash(&mut h);
+        let src_key = h.finish();
+        let mut h = DefaultHasher::new();
+        (o.font_size_pt.to_bits(), o.line_numbers, o.header_footer, &name, &date).hash(&mut h);
         [geom.w, geom.h, geom.left, geom.top, geom.right, geom.bottom].map(f32::to_bits).hash(&mut h);
-        let key = (d.rev, h.finish());
+        let layout_key = h.finish();
+
+        let src = match &p.src {
+            Some((k, src)) if *k == src_key => {
+                // Zurück zu den vorhandenen Zeilen: ein inzwischen veraltetes Einfärben abbrechen.
+                if p.src_rx.take().is_some() {
+                    p.src_gen.fetch_add(1, Ordering::SeqCst);
+                    p.src_for = Some(src_key);
+                }
+                src.clone()
+            }
+            _ => {
+                if p.src_for != Some(src_key) {
+                    p.src_for = Some(src_key);
+                    p.error = None;
+                    // Alte Aufträge abbrechen; der Seitenaufbau wartet auf die neuen Zeilen.
+                    p.src_gen.fetch_add(1, Ordering::SeqCst);
+                    p.layout_gen.fetch_add(1, Ordering::SeqCst);
+                    p.rx = None;
+                    let req = SrcReq { text: d.text.clone(), language: d.hl.language.clone(), range, color, tab_size: tab };
+                    p.src_rx = Some((job::spawn_src(req, p.src_gen.clone(), ctx.clone()), src_key));
+                }
+                return;
+            }
+        };
+        let key = (src_key, layout_key);
         if p.built_for == Some(key) {
             return;
         }
         p.built_for = Some(key);
+        p.error = None;
         let opts = LayoutOpts {
             size: o.font_size_pt,
             line_numbers: o.line_numbers,
@@ -270,9 +392,10 @@ impl App {
             // {page} und {total} bleiben stehen und werden von `paginate` ersetzt.
             footer: t!("print.footer"),
         };
-        let req = LayoutReq { text: d.text.clone(), language: d.hl.language.clone(), range, opts, geom, color, font: font.clone() };
-        // Ein laufender alter Aufbau wird verworfen: sein Ergebnis geht an einen geschlossenen Kanal.
-        p.rx = Some((job::spawn_layout(req, ctx.clone()), geom));
+        // Ein laufender alter Aufbau bricht ab; sein Ergebnis ginge ohnehin an einen geschlossenen Kanal.
+        p.layout_gen.fetch_add(1, Ordering::SeqCst);
+        let req = LayoutReq { src, opts, geom, font: font.clone() };
+        p.rx = Some((job::spawn_layout(req, p.layout_gen.clone(), ctx.clone()), geom));
     }
 
     /// Zeichnet das Druckfenster; false = schließen.
@@ -332,34 +455,38 @@ impl App {
     /// Übernimmt die Einstellungen und startet Druck (`pdf` = None) oder PDF im Hintergrund.
     fn start_output(&mut self, p: &PrintUi, ctx: &Context, pdf: Option<std::path::PathBuf>) {
         let mut s = p.opts.clamped();
-        s.printer = p.printer.clone();
+        // Ohne Druckerliste (PDF vor dem Lesen oder ohne Drucker) bleibt der gespeicherte Drucker.
+        if p.printer.is_some() {
+            s.printer = p.printer.clone();
+        }
         self.settings.print = s;
         self.focus_editor();
-        let (Some(g), Some(font), Some(paper)) = (p.geom, p.font.clone(), p.paper.clone()) else { return };
-        let pages = p.shown().to_vec();
+        let (Some(g), Some(font), Some(pages)) = (p.geom, p.font.clone(), p.pages.clone()) else { return };
+        // Die Seiten werden geteilt, nicht kopiert; der Thread gibt `pages[i..j]` aus.
+        let (i, j) = p.shown_range();
         let title = self.docs[&p.doc].name();
         let is_pdf = pdf.is_some();
         let f: Box<dyn FnOnce() -> Result<String, String> + Send> = match pdf {
             Some(path) => Box::new(move || {
-                let bytes = print::pdf::write_pdf(&pages, &g, &font, &title)?;
+                let bytes = print::pdf::write_pdf(&pages[i..j], &g, &font, &title)?;
                 std::fs::write(&path, bytes).map_err(|e| format!("{}: {e}", path.display()))?;
                 Ok(path.display().to_string())
             }),
             None => {
-                let Some(printer) = p.printer.clone() else { return };
+                let (Some(printer), Some(paper)) = (p.printer.clone(), p.paper.clone()) else { return };
                 // Unter Windows gibt es keine Duplex-Wahl; der Treiber (oder „Eigenschaften…“) entscheidet.
                 let (copies, duplex) = (p.copies, p.opts.duplex && cfg!(not(windows)));
                 Box::new(move || {
-                    print::print_pages(&printer, &pages, &g, &font, &title, copies, duplex, &paper).map(|()| printer)
+                    print::print_pages(&printer, &pages[i..j], &g, &font, &title, copies, duplex, &paper).map(|()| printer)
                 })
             }
         };
-        self.print_rx = Some((job::spawn_output(f, ctx.clone()), is_pdf));
+        self.print_rx.push((job::spawn_output(f, ctx.clone()), is_pdf));
     }
 
     /// Die Optionen rechts und die Schaltflächen.
     fn print_options(&mut self, ui: &mut Ui, p: &mut PrintUi, ctx: &Context) -> Choice {
-        let too_large = self.docs.get(&p.doc).is_some_and(|d| d.lines() > COLOR_MAX_LINES);
+        let too_large = self.docs.get(&p.doc).is_some_and(|d| d.lines() >= COLOR_MAX_LINES);
         let can_sel = self.can_print_selection() && self.cur_id() == p.doc;
         let has_printer = p.printer.is_some();
         let mut paper_changed = false;
@@ -378,8 +505,14 @@ impl App {
             });
             ui.end_row();
             if p.printers_rx.is_none() && !has_printer {
+                // Fehlt CUPS oder schlägt das Lesen fehl, steht der Grund da statt „kein Drucker“.
+                let hint = match &p.printers {
+                    Some(Err(e)) if e == "no-cups" => t!("print.no_cups"),
+                    Some(Err(e)) => t!("msg.print_failed", error = e),
+                    _ => t!("print.no_printer"),
+                };
                 ui.label("");
-                ui.colored_label(Color32::from_rgb(0xC0, 0x30, 0x30), t!("print.no_printer"));
+                ui.colored_label(Color32::from_rgb(0xC0, 0x30, 0x30), hint);
                 ui.end_row();
             }
 
@@ -467,7 +600,8 @@ impl App {
         let mut choice = Choice::Stay;
         ui.horizontal(|ui| {
             let ready = p.ready() && !p.shown().is_empty();
-            if ui.add_enabled(ready, Button::new(t!("print.as_pdf"))).clicked() {
+            let pdf_ready = p.pdf_ready() && !p.shown().is_empty();
+            if ui.add_enabled(pdf_ready, Button::new(t!("print.as_pdf"))).clicked() {
                 choice = Choice::Pdf;
             }
             if ui.button(t!("dialog.cancel")).clicked() {

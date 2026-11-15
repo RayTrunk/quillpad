@@ -56,7 +56,13 @@ pub fn print_pages(
     let pdf = write_pdf(pages, g, font, title)?;
     let n = COUNTER.fetch_add(1, Ordering::Relaxed);
     let file = std::env::temp_dir().join(format!("quillpad-{}-{n}.pdf", std::process::id()));
-    std::fs::write(&file, pdf).map_err(|e| format!("{}: {e}", file.display()))?;
+    // create_new: eine schon vorhandene (womöglich fremde) Datei wird nie überschrieben.
+    std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&file)
+        .and_then(|mut f| std::io::Write::write_all(&mut f, &pdf))
+        .map_err(|e| format!("{}: {e}", file.display()))?;
     let args = cups::lp_args(printer, copies, duplex, &paper.name, title, &file);
     let out = Command::new("lp").args(&args).output();
     // Die Datei wird in jedem Fall entfernt; `lp` hat sie beim Erfolg schon an CUPS übergeben.

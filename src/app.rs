@@ -199,10 +199,10 @@ pub struct App {
     update_rx: Option<(std::sync::mpsc::Receiver<crate::update::Outcome>, bool)>,
     /// Gefundene neuere Version, die gezeigt wird, sobald kein anderer Dialog offen ist.
     update_found: Option<crate::update::Release>,
-    /// Laufender Druck oder PDF-Export; true = PDF.
-    pub print_rx: Option<(crate::ui_print::OutRx, bool)>,
+    /// Laufende Druckaufträge und PDF-Exporte; true = PDF.
+    pub print_rx: Vec<(crate::ui_print::OutRx, bool)>,
     /// Fenster-Handle (HWND) für den Treiberdialog unter Windows; 0 = keins (z. B. in Tests).
-    #[cfg_attr(not(windows), allow(dead_code))]
+    #[cfg(windows)]
     pub hwnd: isize,
     pub test_clicks: Vec<egui::Pos2>,
     last_title: String,
@@ -262,7 +262,8 @@ impl App {
             session_dirty_probe: 0,
             update_rx: None,
             update_found: None,
-            print_rx: None,
+            print_rx: Vec::new(),
+            #[cfg(windows)]
             hwnd: 0,
         };
         app.restore_session();
@@ -1590,7 +1591,7 @@ impl eframe::App for App {
         let _ = frame;
         self.frame(ctx);
         // Bildschirmfoto erst, wenn die Druckvorschau fertig berechnet ist.
-        let print_busy = matches!(&self.dialog, Some(Dialog::Print(p)) if !p.ready());
+        let print_busy = matches!(&self.dialog, Some(Dialog::Print(p)) if p.busy());
         let Some(shot) = self.shot.as_mut() else { return };
         ctx.request_repaint();
         shot.frame += 1;
