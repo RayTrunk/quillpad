@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quillpad – a fast text editor for Windows and Linux</title>
+<meta name="description" content="Quillpad is a fast, free text editor for Windows and Linux with tabs, split view, syntax colouring for more than 100 languages and nine colour themes.">
+<meta property="og:title" content="Quillpad – a fast text editor for Windows and Linux">
+<meta property="og:description" content="Free and open source. Tabs, split view, syntax colouring for 100+ languages, nine colour themes, English, German and French.">
+<meta property="og:image" content="https://raytrunk.github.io/quillpad/screenshots/site-dark.png">
+<link rel="icon" href="icon.png" type="image/png">
+<style>
+  :root {
+    --bg: #14161b; --panel: #1c1f26; --raised: #262a33; --line: #2c313b;
+    --text: #f1f3f6; --dim: #b4bac6; --accent: #5b9bff; --accent-strong: #3b78e7;
+    --quill: #f39a3a; --on-accent: #ffffff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 17px/1.6 system-ui, "Segoe UI", sans-serif;
+  }
+  a { color: var(--accent); }
+  code, pre, kbd { font-family: "Cascadia Code", Consolas, monospace; font-size: 0.9em; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+  header { border-bottom: 1px solid var(--line); }
+  nav { display: flex; align-items: center; gap: 24px; height: 64px; }
+  nav .brand { display: flex; align-items: center; gap: 10px; color: var(--text); text-decoration: none; font-weight: 700; font-size: 20px; }
+  nav .brand img { width: 32px; height: 32px; }
+  nav .links { margin-left: auto; display: flex; gap: 20px; }
+  nav .links a { color: var(--dim); text-decoration: none; }
+  nav .links a:hover { color: var(--text); }
+  .hero { padding: 72px 0 40px; text-align: center; }
+  .hero img.logo { width: 112px; height: 112px; }
+  .hero h1 { font-size: clamp(36px, 6vw, 60px); line-height: 1.1; margin: 16px 0 12px; }
+  .hero h1 em { font-style: normal; color: var(--quill); }
+  .hero p { color: var(--dim); font-size: 20px; max-width: 700px; margin: 0 auto; }
+  .buttons { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 32px; }
+  .button { display: inline-block; padding: 12px 22px; border-radius: 8px; text-decoration: none; font-weight: 600; }
+  .button.primary { background: var(--accent-strong); color: var(--on-accent); }
+  .button.secondary { border: 1px solid var(--line); color: var(--text); background: var(--panel); }
+  .button:hover { filter: brightness(1.12); }
+  .meta { color: var(--dim); font-size: 15px; margin-top: 14px; }
+  .shot { margin: 40px auto 0; max-width: 1000px; }
+  .shot img, .gallery img, .wide img { width: 100%; height: auto; display: block; border-radius: 10px; border: 1px solid var(--line); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5); }
+  section { padding: 64px 0 0; }
+  h2 { font-size: 30px; margin: 0 0 24px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 20px 22px; }
+  .card h3 { margin: 0 0 6px; font-size: 18px; color: var(--accent); }
+  .card p { margin: 0; color: var(--dim); }
+  .gallery { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(440px, 100%), 1fr)); gap: 20px; }
+  .gallery figure, .wide { margin: 0; }
+  .gallery figcaption, .wide figcaption { color: var(--dim); font-size: 15px; margin-top: 8px; }
+  .wide { margin-top: 20px; }
+  .themes { display: flex; flex-wrap: wrap; gap: 10px; margin: 0 0 20px; padding: 0; list-style: none; }
+  .themes li { background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; color: var(--dim); font-size: 15px; }
+  .themes li::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; background: var(--dot); border: 1px solid #555; }
+  table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  td { padding: 10px 16px; border-top: 1px solid var(--line); vertical-align: top; }
+  tr:first-child td { border-top: 0; }
+  td:first-child { white-space: nowrap; width: 1%; }
+  kbd { color: var(--accent); background: var(--raised); border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px; }
+  .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(480px, 100%), 1fr)); gap: 16px; }
+  .download .card h3 { color: var(--quill); }
+  .download .card p + p { margin-top: 8px; }
+  .download code { color: var(--text); }
+  footer { margin-top: 80px; border-top: 1px solid var(--line); padding: 28px 0 40px; color: var(--dim); font-size: 15px; }
+  @media (max-width: 640px) { nav .links { display: none; } td:first-child { white-space: normal; } }
+</style>
+</head>
+<body>
+<header>
+  <nav class="wrap">
+    <a class="brand" href="#"><img src="icon.png" alt="">Quillpad</a>
+    <div class="links">
+      <a href="#features">Features</a>
+      <a href="#screenshots">Screenshots</a>
+      <a href="#themes">Themes</a>
+      <a href="#shortcuts">Shortcuts</a>
+      <a href="#download">Download</a>
+      <a href="https://github.com/RayTrunk/quillpad">GitHub</a>
+    </div>
+  </nav>
+</header>
+
+<main class="wrap">
+  <div class="hero">
+    <img class="logo" src="icon.png" alt="Quillpad logo">
+    <h1>A text editor that <em>keeps up</em></h1>
+    <p>Quillpad opens large files quickly, colours more than 100 languages and
+      remembers your unsaved work between sessions. Free and open source for Windows and Linux,
+      written in Rust.</p>
+    <div class="buttons">
+      <a class="button primary" href="https://github.com/RayTrunk/quillpad/releases/latest">Download for Windows</a>
+      <a class="button secondary" href="https://github.com/RayTrunk/quillpad/releases/latest">Download for Linux</a>
+      <a class="button secondary" href="https://github.com/RayTrunk/quillpad">Source on GitHub</a>
+    </div>
+    <div class="meta">English · Deutsch · Français &nbsp;·&nbsp; GPL-3.0 &nbsp;·&nbsp; no administrator rights needed</div>
+    <div class="shot"><img src="screenshots/site-dark.png" alt="Quillpad in the Dark theme with a Rust file, outline and overview map" width="1250" height="875"></div>
+  </div>
+
+  <section id="features">
+    <h2>Features</h2>
+    <div class="grid">
+      <div class="card"><h3>Tabs and split view</h3><p>Any number of tabs, two panes side by side with synchronised scrolling, and sessions that bring back every tab, including unsaved text.</p></div>
+      <div class="card"><h3>100+ languages</h3><p>Syntax colouring from the file name or the first line (<code>#!/bin/bash</code>, <code>&lt;?xml</code>), plus folding, an outline of functions and an overview map.</p></div>
+      <div class="card"><h3>Search bar</h3><p>A live match counter while you type, case and whole-word switches, regular expressions and <code>\n</code>-style escapes. Find and replace across whole folders.</p></div>
+      <div class="card"><h3>Editing tools</h3><p>Multiple cursors, block selection, bookmarks, line tools (duplicate, move, join, sort), comment toggling, word completion and number sequences.</p></div>
+      <div class="card"><h3>Your file stays your file</h3><p>UTF-8, UTF-16, ANSI and many legacy character sets, and the line endings are kept exactly as they were when you save.</p></div>
+      <div class="card"><h3>Large files</h3><p>Text is held in a rope and coloured piece by piece, so big files stay responsive. Unsaved work is backed up every few seconds.</p></div>
+      <div class="card"><h3>Three languages</h3><p>The interface follows your system language – English, German or French – and can be switched at any time. Shortcuts are shown the way your language writes them.</p></div>
+      <div class="card"><h3>Fits in</h3><p>Installer with Start menu entry, “Open with” and an optional “Edit with Quillpad” context menu; on Linux a menu entry via <code>install.sh</code>.</p></div>
+      <div class="card"><h3>Stays current</h3><p>A small notice tells you when a new version is out on GitHub. It checks at most once a day and can be turned off.</p></div>
+    </div>
+  </section>
+
+  <section id="screenshots">
+    <h2>Screenshots</h2>
+    <div class="gallery">
+      <figure><img src="screenshots/site-split.png" alt="Two panes side by side in the Nord theme" width="1250" height="875" loading="lazy"><figcaption>Split view, Nord theme</figcaption></figure>
+      <figure><img src="screenshots/site-find.png" alt="Search results for all open files in the Light theme" width="1250" height="875" loading="lazy"><figcaption>Find in all open documents, Light theme</figcaption></figure>
+      <figure><img src="screenshots/site-monokai.png" alt="Search bar and visible whitespace in the Monokai theme" width="1250" height="875" loading="lazy"><figcaption>Search bar and visible whitespace, Monokai theme</figcaption></figure>
+      <figure><img src="screenshots/site-prefs.png" alt="Preferences window in the Solarized Dark theme" width="1250" height="875" loading="lazy"><figcaption>Preferences, Solarized Dark theme</figcaption></figure>
+    </div>
+  </section>
+
+  <section id="themes">
+    <h2>Nine colour themes</h2>
+    <ul class="themes">
+      <li style="--dot: #f5f6f8">Light</li>
+      <li style="--dot: #1e1e1e">Dark</li>
+      <li style="--dot: #fdf6e3">Solarized Light</li>
+      <li style="--dot: #002b36">Solarized Dark</li>
+      <li style="--dot: #2e3440">Nord</li>
+      <li style="--dot: #272822">Monokai</li>
+      <li style="--dot: #f4ecd8">Sepia</li>
+      <li style="--dot: #000000">High contrast</li>
+      <li style="--dot: #c0c0c0">Windows 98</li>
+    </ul>
+    <figure class="wide"><img src="screenshots/en-themes.png" alt="Quillpad in the Dark, Nord and Windows 98 themes" loading="lazy"><figcaption>Dark, Nord and Windows 98</figcaption></figure>
+    <div class="gallery" style="margin-top: 20px">
+      <figure><img src="screenshots/site-win98.png" alt="A Bash script in the Windows 98 theme" width="1250" height="875" loading="lazy"><figcaption>The Windows 98 look, with bevelled bars and a 16-colour syntax palette</figcaption></figure>
+      <figure><img src="screenshots/en-main.png" alt="Quillpad in the Light theme with the search bar open" width="1250" height="875" loading="lazy"><figcaption>Light theme with the search bar</figcaption></figure>
+    </div>
+  </section>
+
+  <section id="shortcuts">
+    <h2>Handy shortcuts</h2>
+    <div class="cols">
+      <table>
+        <tr><td><kbd>Ctrl+F</kbd></td><td>search bar with live counter</td></tr>
+        <tr><td><kbd>Ctrl+H</kbd></td><td>replace</td></tr>
+        <tr><td><kbd>Ctrl+Shift+F</kbd></td><td>find in files</td></tr>
+        <tr><td><kbd>F3</kbd>, <kbd>Shift+F3</kbd></td><td>next / previous match</td></tr>
+        <tr><td><kbd>Ctrl+G</kbd></td><td>go to line</td></tr>
+        <tr><td><kbd>Ctrl+B</kbd></td><td>jump to the matching bracket</td></tr>
+        <tr><td><kbd>Ctrl+F2</kbd>, <kbd>F2</kbd></td><td>set / jump to bookmarks</td></tr>
+        <tr><td><kbd>Alt+0</kbd></td><td>fold everything</td></tr>
+      </table>
+      <table>
+        <tr><td><kbd>Ctrl</kbd> + click</td><td>add another cursor</td></tr>
+        <tr><td><kbd>Alt</kbd> + drag</td><td>block selection</td></tr>
+        <tr><td><kbd>Ctrl+D</kbd></td><td>duplicate line</td></tr>
+        <tr><td><kbd>Ctrl+Shift+Up</kbd></td><td>move line up (Down: down)</td></tr>
+        <tr><td><kbd>Ctrl+Q</kbd></td><td>toggle comment</td></tr>
+        <tr><td><kbd>Ctrl+Space</kbd></td><td>complete a word from the document</td></tr>
+        <tr><td><kbd>Alt+C</kbd></td><td>insert a number sequence</td></tr>
+        <tr><td><kbd>Ctrl+Tab</kbd></td><td>next tab</td></tr>
+      </table>
+    </div>
+    <p style="color: var(--dim)">The full list is under <em>Help → Keyboard Shortcuts</em>.</p>
+  </section>
+
+  <section id="download" class="download">
+    <h2>Download</h2>
+    <div class="grid">
+      <div class="card"><h3>Windows 10 and 11</h3>
+        <p><code>quillpad-…-windows-x64-setup.exe</code> installs Quillpad without administrator rights, with Start menu, “Open with” and an optional context menu entry.</p>
+        <p>Or take the single portable <code>.exe</code>.</p></div>
+      <div class="card"><h3>Linux (64-bit)</h3>
+        <p>Unpack <code>quillpad-…-linux-x64.tar.gz</code> and run <code>./install.sh</code>; Quillpad then shows up in the application menu. Needs glibc 2.39 or newer (Ubuntu 24.04, Debian 13, Fedora 40).</p></div>
+      <div class="card"><h3>Build it yourself</h3>
+        <p>Install Rust from <a href="https://rustup.rs">rustup.rs</a>, then run <code>cargo build --release</code> in the source folder.</p></div>
+    </div>
+    <div class="buttons" style="justify-content: flex-start">
+      <a class="button primary" href="https://github.com/RayTrunk/quillpad/releases/latest">Latest release</a>
+      <a class="button secondary" href="https://github.com/RayTrunk/quillpad/releases">All releases</a>
+    </div>
+    <p style="color: var(--dim)">The programs are not signed, so Windows SmartScreen asks for confirmation on the first start
+      (“More info” → “Run anyway”). Checksums are attached to every release.</p>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">© 2026 R. Trunk · Quillpad is free software under the
+    <a href="https://github.com/RayTrunk/quillpad/blob/main/LICENSE">GNU General Public License version 3</a> ·
+    <a href="https://github.com/RayTrunk/quillpad/blob/main/README.de.md">Deutsch</a> ·
+    <a href="https://github.com/RayTrunk/quillpad/blob/main/README.fr.md">Français</a></div>
+</footer>
+</body>
+</html>
