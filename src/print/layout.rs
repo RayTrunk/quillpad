@@ -66,14 +66,14 @@ fn attrs(l: &SrcLine, n: usize) -> Vec<Attr> {
 
 /// Zerlegt eine Zeile in Anzeigezeilen (Bereiche in `chars`). Bricht am letzten
 /// Leerzeichen, das noch passt, sonst hart; mindestens ein Zeichen pro Zeile.
-fn wrap(chars: &[char], avail: f32, tab: f32, size: f32, m: &dyn Measure) -> Vec<(usize, usize)> {
+fn wrap(chars: &[char], at: &[Attr], avail: f32, tab: f32, size: f32, m: &dyn Measure) -> Vec<(usize, usize)> {
     let mut rows = Vec::new();
     let mut start = 0;
     loop {
         let (mut x, mut space, mut i) = (0.0f32, None, start);
         while i < chars.len() {
             let c = chars[i];
-            let nx = if c == '\t' { (x / tab).floor() * tab + tab } else { x + m.advance(c, false) * size };
+            let nx = if c == '\t' { (x / tab).floor() * tab + tab } else { x + m.advance(c, at[i].1) * size };
             if nx > avail + EPS && i > start {
                 break;
             }
@@ -116,7 +116,7 @@ pub fn paginate(src: &[SrcLine], o: &LayoutOpts, g: &Geom, m: &dyn Measure) -> V
     for l in src {
         let chars: Vec<char> = l.text.chars().collect();
         let at = attrs(l, chars.len());
-        for (n, &(a, b)) in wrap(&chars, avail, tab, size, m).iter().enumerate() {
+        for (n, &(a, b)) in wrap(&chars, &at, avail, tab, size, m).iter().enumerate() {
             if slot == cap {
                 pages.push(Page::default());
                 slot = 0;
@@ -167,8 +167,8 @@ mod tests {
 
     struct Fixed;
     impl Measure for Fixed {
-        fn advance(&self, c: char, _bold: bool) -> f32 {
-            if ('\u{4E00}'..='\u{9FFF}').contains(&c) { 1.2 } else { 0.6 }
+        fn advance(&self, c: char, bold: bool) -> f32 {
+            if ('\u{4E00}'..='\u{9FFF}').contains(&c) { 1.2 } else if bold { 0.7 } else { 0.6 }
         }
         fn face(&self, _c: char) -> u8 { 0 }
         fn ascent(&self) -> f32 { 0.8 }
@@ -222,6 +222,21 @@ mod tests {
         let texts: Vec<&str> = pages[0].runs.iter().map(|r| r.text.as_str()).collect();
         assert_eq!(texts, ["1", "aaaa bbbb cccc dddd ", "eeee ffff", "2",
             &"x".repeat(20), &"x".repeat(20), &"x".repeat(10)]);
+    }
+
+    #[test]
+    fn paginate_wraps_with_bold_width() {
+        let g = narrow(20.0);
+        let src = [SrcLine {
+            number: 1,
+            text: "x".repeat(50),
+            spans: vec![crate::highlight::Span { chars: 50, color: Color32::BLACK, bold: true }],
+        }];
+        let runs = &paginate(&src, &opts(), &g, &Fixed)[0].runs;
+        let lens: Vec<usize> = runs.iter().map(|r| r.text.chars().count()).collect();
+        // Ohne Nummernspalte: 138 pt Platz, fett 7 pt je Zeichen (nicht fett wären es 23 Zeichen).
+        assert_eq!(lens, [19, 19, 12]);
+        assert!(runs.iter().all(|r| r.x + r.text.chars().count() as f32 * 7.0 <= g.w - g.right + 0.01));
     }
 
     #[test]
