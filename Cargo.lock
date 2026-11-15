@@ -2984,9 +2984,11 @@ dependencies = [
  "syntect",
  "sys-locale",
  "toml 0.8.23",
+ "ttf-parser",
  "two-face",
  "ureq",
  "walkdir",
+ "windows",
  "winresource",
 ]
 

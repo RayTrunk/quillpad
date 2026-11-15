@@ -35,6 +35,12 @@ sys-locale = "0.3"
 # Druck: PDF schreiben (eigene Seiten, Schrift als Untermenge eingebettet).
 pdf-writer = "0.15"
 subsetter = "0.2"
+# Druck: Familienname aus der Name-Tabelle (für CreateFontW unter Windows).
+ttf-parser = "0.25"
+
+# Druck unter Windows: Druckerliste, Treiberdialog und Ausgabe über GDI.
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Graphics_Printing", "Win32_Storage_Xps", "Win32_UI_WindowsAndMessaging"] }
 
 # Das Programm wird auch im Entwicklungsbau flüssig: Bibliotheken immer optimiert.
 # Bettet unter Windows Programmsymbol und Versionsangaben in die exe ein (build.rs).

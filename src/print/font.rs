@@ -11,6 +11,22 @@ pub struct Face {
     pub index: u32,
 }
 
+impl Face {
+    /// Familienname (Name-ID 1) aus der Name-Tabelle; bevorzugt der englische Windows-Eintrag.
+    pub fn family_name(&self) -> Option<String> {
+        let face = ttf_parser::Face::parse(&self.data, self.index).ok()?;
+        let names: Vec<_> = face
+            .names()
+            .into_iter()
+            .filter(|n| n.name_id == ttf_parser::name_id::FAMILY && n.is_unicode())
+            .collect();
+        let windows_en = names
+            .iter()
+            .find(|n| n.platform_id == ttf_parser::PlatformId::Windows && n.language_id == 0x0409);
+        windows_en.into_iter().chain(names.iter()).find_map(|n| n.to_string())
+    }
+}
+
 pub struct PrintFont {
     pub regular: Face,
     pub bold: Option<Face>,
@@ -174,5 +190,6 @@ mod tests {
         assert!(f.advance('\u{1F600}', false) > 0.0);
         assert!(f.ascent() > 0.0);
         assert_eq!(f.face_data(0, true).index, 0);
+        assert!(f.regular.family_name().is_some_and(|n| !n.is_empty()));
     }
 }

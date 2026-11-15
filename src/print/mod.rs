@@ -3,9 +3,22 @@
 //! Drucken: plattformunabhängiger Seitenaufbau. Vorschau, PDF und Windows-GDI
 //! zeichnen nur, was `layout::paginate` liefert, und rechnen nichts selbst.
 
+pub mod cups;
 pub mod font;
 pub mod layout;
 pub mod pdf;
+#[cfg(all(unix, not(target_os = "macos")))]
+mod sys_linux;
+#[cfg(windows)]
+mod sys_windows;
+
+// Wird ab dem Druckdialog (Task 7) benutzt.
+#[allow(unused_imports)]
+#[cfg(all(unix, not(target_os = "macos")))]
+pub use sys_linux::{paper_for, print_pages, printers};
+#[allow(unused_imports)]
+#[cfg(windows)]
+pub use sys_windows::{paper_for, print_pages, printers, properties};
 
 /// Punkt pro Millimeter.
 pub const MM: f32 = 72.0 / 25.4;
@@ -70,4 +83,37 @@ pub struct Page {
     pub runs: Vec<Run>,
     /// x0, x1, y
     pub rules: Vec<[f32; 3]>,
+}
+
+/// Ein Drucker, wie ihn das System meldet.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Printer {
+    pub name: String,
+    pub is_default: bool,
+}
+
+/// Papier eines Druckers. Die Ränder von `geom_full` sind der nicht bedruckbare Bereich.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Paper {
+    /// "A4" … oder der Formularname des Treibers.
+    pub name: String,
+    pub geom_full: Geom,
+}
+
+/// Wählbare Formate (Name, Breite, Höhe in pt).
+pub const PAPERS: [(&str, f32, f32); 4] =
+    [("A4", 595.0, 842.0), ("Letter", 612.0, 792.0), ("A5", 420.0, 595.0), ("Legal", 612.0, 1008.0)];
+
+/// Papier aus `PAPERS` nach Namen (Groß-/Kleinschreibung egal), ohne Rand.
+pub fn paper_named(name: &str) -> Option<Paper> {
+    PAPERS.iter().find(|p| p.0.eq_ignore_ascii_case(name)).map(|&(n, w, h)| Paper {
+        name: n.to_string(),
+        geom_full: Geom { w, h, left: 0.0, top: 0.0, right: 0.0, bottom: 0.0 },
+    })
+}
+
+/// Vorgabe, wenn weder Wahl noch Drucker ein Format liefern: Letter bei en-US, sonst A4.
+pub fn default_paper() -> Paper {
+    let us = sys_locale::get_locale().is_some_and(|l| l.eq_ignore_ascii_case("en-US"));
+    paper_named(if us { "Letter" } else { "A4" }).expect("Format in PAPERS")
 }
