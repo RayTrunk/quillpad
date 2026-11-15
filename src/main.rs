@@ -11,6 +11,7 @@ mod highlight;
 mod i18n;
 mod icons;
 mod instance;
+mod print;
 mod search;
 mod settings;
 #[cfg(test)]
