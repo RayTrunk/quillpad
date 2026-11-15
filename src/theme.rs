@@ -284,3 +284,45 @@ mod tests {
         }
     }
 }
+
+/// Relative Helligkeit nach WCAG.
+fn luminance(c: u32) -> f32 {
+    let lin = |v: u32| {
+        let s = v as f32 / 255.0;
+        if s <= 0.03928 { s / 12.92 } else { ((s + 0.055) / 1.055).powf(2.4) }
+    };
+    0.2126 * lin((c >> 16) & 0xFF) + 0.7152 * lin((c >> 8) & 0xFF) + 0.0722 * lin(c & 0xFF)
+}
+
+/// Kontrastverhältnis zweier Farben nach WCAG (1 bis 21).
+pub fn contrast(a: u32, b: u32) -> f32 {
+    let (la, lb) = (luminance(a), luminance(b));
+    (la.max(lb) + 0.05) / (la.min(lb) + 0.05)
+}
+
+/// Alle drei Kanäle um 10 % abdunkeln, bis die Farbe auf Weiß gut lesbar ist.
+fn darken_for_paper(mut c: u32) -> u32 {
+    while contrast(c, 0xFFFFFF) < 4.5 && c != 0 {
+        let ch = |shift: u32| (((c >> shift) & 0xFF) as f32 * 0.9) as u32;
+        c = (ch(16) << 16) | (ch(8) << 8) | ch(0);
+    }
+    c
+}
+
+/// Farben für den Druck auf weißem Papier, unabhängig vom Bildschirmdesign.
+/// mono: Schwarzweißdruck, alles schwarz, Kommentare grau.
+pub fn paper_syntax(mono: bool) -> Syntax {
+    if mono {
+        return Syntax {
+            fg: 0, bg: 0xFFFFFF, comment: 0x666666, string: 0, number: 0, keyword: 0,
+            typ: 0, pre: 0, op: 0, func: 0, bad: 0, attr: 0, inserted: 0,
+        };
+    }
+    let l = syntax(ThemeId::Light);
+    let d = darken_for_paper;
+    Syntax {
+        fg: 0, bg: 0xFFFFFF, comment: d(l.comment), string: d(l.string), number: d(l.number),
+        keyword: d(l.keyword), typ: d(l.typ), pre: d(l.pre), op: d(l.op), func: d(l.func),
+        bad: d(l.bad), attr: d(l.attr), inserted: d(l.inserted),
+    }
+}

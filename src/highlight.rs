@@ -22,6 +22,8 @@ pub struct Engine {
     pub own: SyntaxSet,
     /// Ein Farbsatz je Design, in der Reihenfolge von ThemeId::ALL.
     pub themes: Vec<Theme>,
+    /// Farben für den Druck: [farbig, schwarzweiß].
+    pub paper: [Theme; 2],
     pub names: Vec<String>,
 }
 
@@ -73,7 +75,14 @@ pub fn engine() -> &'static Engine {
         Engine {
             ss,
             own,
-            themes: ThemeId::ALL.into_iter().map(make_theme).collect(),
+            themes: ThemeId::ALL
+                .into_iter()
+                .map(|t| make_theme_from(&crate::theme::syntax(t), &t.label()))
+                .collect(),
+            paper: [
+                make_theme_from(&crate::theme::paper_syntax(false), "Papier"),
+                make_theme_from(&crate::theme::paper_syntax(true), "Papier schwarzweiß"),
+            ],
             names,
         }
     })
@@ -88,7 +97,7 @@ fn c(hex: u32) -> Color {
     }
 }
 
-fn make_theme(t: ThemeId) -> Theme {
+fn make_theme_from(s: &crate::theme::Syntax, name: &str) -> Theme {
     let item = |scope: &str, color: u32, bold: bool| ThemeItem {
         scope: ScopeSelectors::from_str(scope).expect("gültiger Bereich"),
         style: StyleModifier {
@@ -97,11 +106,10 @@ fn make_theme(t: ThemeId) -> Theme {
             font_style: Some(if bold { FontStyle::BOLD } else { FontStyle::empty() }),
         },
     };
-    let s = crate::theme::syntax(t);
     let (fg, comment, string, number, keyword, typ, pre, op, func, bad, attr) =
         (s.fg, s.comment, s.string, s.number, s.keyword, s.typ, s.pre, s.op, s.func, s.bad, s.attr);
     Theme {
-        name: Some(t.label().to_string()),
+        name: Some(name.to_string()),
         author: None,
         settings: ThemeSettings {
             foreground: Some(c(fg)),
@@ -305,32 +313,9 @@ impl DocHl {
             if line == self.checkpoints.len() * CHECKPOINT {
                 self.checkpoints.push((ps.clone(), hs.clone()));
             }
-            let rope_line = text.line(line);
-            let long = rope_line.len_chars() > MAX_LINE;
-            let mut s = if long {
-                String::from("\n")
-            } else {
-                rope_line.to_string()
-            };
-            if !s.ends_with('\n') {
-                s.push('\n');
-            }
-            let ops = ps.parse_line(&s, set).unwrap_or_default();
-            let mut spans: Vec<Span> = Vec::new();
-            for (style, piece) in HighlightIterator::new(&mut hs, &ops, &s, &highlighter) {
-                let n = piece.chars().count() as u32;
-                if n == 0 {
-                    continue;
-                }
-                let color = Color32::from_rgb(style.foreground.r, style.foreground.g, style.foreground.b);
-                let bold = style.font_style.contains(FontStyle::BOLD);
-                match spans.last_mut() {
-                    Some(l) if l.color == color && l.bold == bold => l.chars += n,
-                    _ => spans.push(Span { chars: n, color, bold }),
-                }
-            }
+            let (spans, _) = highlight_line(text.line(line), &mut ps, &mut hs, &highlighter, set);
             if line >= first {
-                self.cache.insert(line, Arc::new(if long { Vec::new() } else { spans }));
+                self.cache.insert(line, Arc::new(spans));
             }
             line += 1;
             if t0.elapsed() > budget && line < last {
@@ -341,6 +326,95 @@ impl DocHl {
         self.cur = Some((line, ps, hs));
         done
     }
+}
+
+/// Eine Zeile parsen und einfärben. Der Zustand wandert zur nächsten Zeile weiter.
+/// Liefert die Abschnitte und ob die Zeile zu lang war (dann ohne Abschnitte).
+fn highlight_line(
+    rope_line: ropey::RopeSlice,
+    ps: &mut ParseState,
+    hs: &mut HighlightState,
+    highlighter: &Highlighter,
+    set: &SyntaxSet,
+) -> (Vec<Span>, bool) {
+    let long = rope_line.len_chars() > MAX_LINE;
+    let mut s = if long { String::from("\n") } else { rope_line.to_string() };
+    if !s.ends_with('\n') {
+        s.push('\n');
+    }
+    let ops = ps.parse_line(&s, set).unwrap_or_default();
+    let mut spans: Vec<Span> = Vec::new();
+    for (style, piece) in HighlightIterator::new(hs, &ops, &s, highlighter) {
+        let n = piece.chars().count() as u32;
+        if n == 0 {
+            continue;
+        }
+        let color = Color32::from_rgb(style.foreground.r, style.foreground.g, style.foreground.b);
+        let bold = style.font_style.contains(FontStyle::BOLD);
+        match spans.last_mut() {
+            Some(l) if l.color == color && l.bold == bold => l.chars += n,
+            _ => spans.push(Span { chars: n, color, bold }),
+        }
+    }
+    (if long { Vec::new() } else { spans }, long)
+}
+
+/// Abschnitte für den Druck: feste Papierfarben, unabhängig vom Bildschirmdesign.
+/// Geparst wird ab Zeile 0, damit mehrzeilige Konstrukte stimmen. Zeilen ohne Sprache
+/// oder über MAX_LINE bestehen aus einem einzigen Abschnitt in Textfarbe.
+pub fn paper_spans(text: &Rope, language: Option<&str>, mono: bool, lines: std::ops::Range<usize>) -> Vec<Vec<Span>> {
+    let e = engine();
+    let pc = crate::theme::paper_syntax(mono);
+    let fg = Color32::from_rgb((pc.fg >> 16) as u8, (pc.fg >> 8) as u8, pc.fg as u8);
+    let total = text.len_lines();
+    // Zeichen ohne Zeilenende
+    let plain_len = |l: usize| {
+        let line = text.line(l);
+        let mut n = line.len_chars();
+        if n > 0 && line.char(n - 1) == '\n' {
+            n -= 1;
+            if n > 0 && line.char(n - 1) == '\r' {
+                n -= 1;
+            }
+        }
+        n as u32
+    };
+    let plain = |l: usize| {
+        let n = plain_len(l);
+        if n == 0 { Vec::new() } else { vec![Span { chars: n, color: fg, bold: false }] }
+    };
+    let lines = lines.start.min(total)..lines.end.min(total);
+    let Some((set, syntax)) = language.and_then(|l| e.find(l)) else {
+        return lines.map(plain).collect();
+    };
+    let theme = &e.paper[usize::from(mono)];
+    let highlighter = Highlighter::new(theme);
+    let mut ps = ParseState::new(syntax);
+    let mut hs = HighlightState::new(&highlighter, ScopeStack::new());
+    let mut out = Vec::with_capacity(lines.len());
+    for line in 0..lines.end {
+        let (mut spans, long) = highlight_line(text.line(line), &mut ps, &mut hs, &highlighter, set);
+        if line < lines.start {
+            continue;
+        }
+        if long {
+            out.push(plain(line));
+            continue;
+        }
+        // Das Zeilenende gehört nicht zum Druck: hinten abschneiden.
+        let mut excess = text.line(line).len_chars() as u32 - plain_len(line);
+        while excess > 0 {
+            let Some(l) = spans.last_mut() else { break };
+            let cut = excess.min(l.chars);
+            l.chars -= cut;
+            excess -= cut;
+            if l.chars == 0 {
+                spans.pop();
+            }
+        }
+        out.push(spans);
+    }
+    out
 }
 
 /// Kommentarzeichen je Sprache: (Zeile, Block)
@@ -504,5 +578,57 @@ mod tests {
         let mut h = DocHl::new(Some("Rust".into()));
         while !h.ensure(&text, 4000, 4010, Duration::from_millis(5)) {}
         assert!(h.spans(4005).is_some());
+    }
+
+    fn rgb(h: u32) -> Color32 {
+        Color32::from_rgb((h >> 16) as u8, (h >> 8) as u8, h as u8)
+    }
+
+    #[test]
+    fn paper_colors_are_readable_on_white() {
+        use crate::theme::{contrast, paper_syntax};
+        for mono in [false, true] {
+            let s = paper_syntax(mono);
+            for (n, c) in [
+                ("fg", s.fg), ("comment", s.comment), ("string", s.string), ("number", s.number),
+                ("keyword", s.keyword), ("typ", s.typ), ("pre", s.pre), ("op", s.op), ("func", s.func),
+                ("bad", s.bad), ("attr", s.attr), ("inserted", s.inserted),
+            ] {
+                assert!(contrast(c, 0xFFFFFF) >= 4.5, "{n} {c:06X} mono={mono}");
+            }
+        }
+        assert_eq!(paper_syntax(false).fg, 0x000000);
+        assert_eq!(paper_syntax(true).comment, 0x666666);
+    }
+
+    #[test]
+    fn paper_spans_ignore_the_screen_theme() {
+        use crate::theme::paper_syntax;
+        // In Rust ist "#" kein Kommentar, daher "//".
+        let text = Rope::from_str("// Kommentar
+fn main() {}
+");
+        let before = paper_spans(&text, Some("Rust"), false, 0..2);
+        let mut hl = DocHl::new(Some("Rust".into()));
+        hl.set_theme(ThemeId::Monokai);
+        hl.ensure(&text, 0, 2, Duration::from_secs(5));
+        let after = paper_spans(&text, Some("Rust"), false, 0..2);
+        let key = |v: &Vec<Span>| v.iter().map(|s| (s.chars, s.color, s.bold)).collect::<Vec<_>>();
+        assert_eq!(key(&before[0]), key(&after[0]));
+        assert!(!before[0].is_empty());
+        assert!(before[0].iter().all(|s| s.color == rgb(paper_syntax(false).comment)));
+        let mono = paper_spans(&text, Some("Rust"), true, 0..2);
+        assert!(mono[0].iter().all(|s| s.color == rgb(0x666666)));
+        assert!(mono[1].iter().all(|s| s.color == rgb(0x000000)));
+        for i in 0..2usize {
+            for v in [&before, &mono] {
+                assert_eq!(v[i].iter().map(|s| s.chars).sum::<u32>(), 12);
+            }
+        }
+        // Ohne Sprache: ein Abschnitt in Textfarbe
+        let none = paper_spans(&text, None, false, 1..2);
+        assert_eq!(none.len(), 1);
+        assert_eq!(none[0].len(), 1);
+        assert_eq!(none[0][0].chars, 12);
     }
 }
