@@ -401,8 +401,8 @@ pub fn paper_spans(text: &Rope, language: Option<&str>, mono: bool, lines: std::
             out.push(plain(line));
             continue;
         }
-        // Das Zeilenende gehört nicht zum Druck: hinten abschneiden.
-        let mut excess = text.line(line).len_chars() as u32 - plain_len(line);
+        // Zeilenende (auch das angehängte der letzten Zeile) gehört nicht zum Druck: hinten abschneiden.
+        let mut excess = spans.iter().map(|s| s.chars).sum::<u32>().saturating_sub(plain_len(line));
         while excess > 0 {
             let Some(l) = spans.last_mut() else { break };
             let cut = excess.min(l.chars);
@@ -630,5 +630,17 @@ fn main() {}
         assert_eq!(none.len(), 1);
         assert_eq!(none[0].len(), 1);
         assert_eq!(none[0][0].chars, 12);
+    }
+
+    #[test]
+    fn paper_spans_last_line_without_newline() {
+        let text = Rope::from_str("fn a() {}
+let x = 1;");
+        for lang in [Some("Rust"), None] {
+            let v = paper_spans(&text, lang, false, 0..2);
+            assert_eq!(v.len(), 2);
+            assert_eq!(v[0].iter().map(|s| s.chars).sum::<u32>(), 9);
+            assert_eq!(v[1].iter().map(|s| s.chars).sum::<u32>(), 10, "{lang:?}");
+        }
     }
 }
