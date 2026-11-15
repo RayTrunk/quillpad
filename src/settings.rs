@@ -31,6 +31,50 @@ pub struct Settings {
     pub update_check: bool,
     /// Zeitpunkt der letzten Suche als Unix-Sekunden.
     pub last_update_check: i64,
+    /// Einstellungen für das Drucken.
+    pub print: PrintSettings,
+}
+
+/// Druckeinstellungen: Schrift, Ränder, Kopf- und Fußzeile, Drucker und Papier.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct PrintSettings {
+    pub font_size_pt: f32,
+    pub margin_mm: f32,
+    pub line_numbers: bool,
+    pub header_footer: bool,
+    pub color: bool,
+    /// None = Standarddrucker.
+    pub printer: Option<String>,
+    /// None = vom Drucker (nur Linux).
+    pub paper: Option<String>,
+    pub duplex: bool,
+}
+
+impl Default for PrintSettings {
+    fn default() -> Self {
+        PrintSettings {
+            font_size_pt: 10.0,
+            margin_mm: 15.0,
+            line_numbers: true,
+            header_footer: true,
+            color: true,
+            printer: None,
+            paper: None,
+            duplex: false,
+        }
+    }
+}
+
+impl PrintSettings {
+    /// Kopie mit Schriftgröße auf 6 bis 24 pt und Rand auf 5 bis 40 mm begrenzt.
+    pub fn clamped(&self) -> PrintSettings {
+        PrintSettings {
+            font_size_pt: self.font_size_pt.clamp(6.0, 24.0),
+            margin_mm: self.margin_mm.clamp(5.0, 40.0),
+            ..self.clone()
+        }
+    }
 }
 
 impl Default for Settings {
@@ -55,6 +99,7 @@ impl Default for Settings {
             auto_reload: false,
             update_check: true,
             last_update_check: 0,
+            print: PrintSettings::default(),
         }
     }
 }
@@ -154,5 +199,23 @@ mod tests {
         std::fs::write(dir.join("settings.json"), b"kaputt").unwrap();
         assert_eq!(st.load_settings().theme, ThemeId::Light);
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn print_settings_have_defaults_and_are_clamped() {
+        let d = Settings::default().print;
+        assert_eq!(d.font_size_pt, 10.0);
+        assert_eq!(d.margin_mm, 15.0);
+        assert!(d.color && d.line_numbers && d.header_footer);
+        assert!(!d.duplex);
+
+        let loaded: Settings =
+            serde_json::from_str(r#"{"print":{"font_size_pt":99,"margin_mm":1}}"#).unwrap();
+        let c = loaded.print.clamped();
+        assert_eq!(c.font_size_pt, 24.0);
+        assert_eq!(c.margin_mm, 5.0);
+
+        let old: Settings = serde_json::from_str(r#"{"font":"Courier New"}"#).unwrap();
+        assert_eq!(old.print, PrintSettings::default());
     }
 }
