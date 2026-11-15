@@ -13,6 +13,8 @@ pub struct Face {
 
 impl Face {
     /// Familienname (Name-ID 1) aus der Name-Tabelle; bevorzugt der englische Windows-Eintrag.
+    /// Braucht nur die GDI-Ausgabe unter Windows (CreateFontW).
+    #[cfg_attr(not(windows), allow(dead_code))]
     pub fn family_name(&self) -> Option<String> {
         let face = ttf_parser::Face::parse(&self.data, self.index).ok()?;
         let names: Vec<_> = face

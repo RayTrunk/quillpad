@@ -901,6 +901,7 @@ impl App {
                     });
                 });
             }
+            Dialog::Print(p) => keep = self.draw_print(ctx, p),
         }
         if keep && self.dialog.is_none() {
             self.dialog = Some(dialog);

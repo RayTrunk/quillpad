@@ -21,6 +21,7 @@ mod theme;
 mod ui_chrome;
 mod ui_find;
 mod ui_panels;
+mod ui_print;
 mod update;
 
 use std::path::PathBuf;

@@ -673,18 +673,134 @@ fn reload_of_a_changed_document_asks_first() {
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
+/// Ohne Druckschrift auf dem System lassen sich die Drucktests nicht ausführen.
+fn print_font_missing(r: &Rig) -> bool {
+    let missing = crate::print::font::PrintFont::load(&r.app.settings.font).is_none();
+    if missing {
+        eprintln!("keine Druckschrift gefunden, Test übersprungen");
+    }
+    missing
+}
+
+fn print_ui(r: &mut Rig) -> &mut crate::ui_print::PrintUi {
+    match &mut r.app.dialog {
+        Some(crate::app::Dialog::Print(ui)) => ui,
+        _ => panic!("Druckfenster ist nicht offen"),
+    }
+}
+
+/// Frames, bis die Seiten zum aktuellen Stand fertig sind (höchstens 200).
+fn wait_print_pages(r: &mut Rig) {
+    for _ in 0..200 {
+        r.frames(1);
+        if print_ui(r).ready() {
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    panic!("Seiten wurden nicht fertig");
+}
+
+fn print_texts(r: &mut Rig) -> Vec<String> {
+    let ui = print_ui(r);
+    ui.shown().iter().flat_map(|p| &p.runs).map(|x| x.text.clone()).collect()
+}
+
 #[test]
-fn print_page_contains_escaped_colored_text() {
+fn print_dialog_opens_and_builds_pages() {
     let mut r = Rig::new();
-    r.set_text("// a<b\nfn x() {}");
-    r.act(Action::SetLanguage(Some("Rust".into())));
-    let id = r.app.cur_id();
-    let html = crate::app::print_html(r.app.docs.get_mut(&id).unwrap());
-    assert!(html.contains("window.print()"));
-    assert!(html.contains("a&lt;b"));
-    let comment = format!("color:#{:06x}", crate::theme::syntax(crate::theme::ThemeId::Light).comment);
-    assert!(html.to_lowercase().contains(&comment), "Kommentar in der Farbe des Designs");
-    assert!(!html.contains("a<b"));
+    if print_font_missing(&r) {
+        return;
+    }
+    r.app.settings.theme = crate::theme::ThemeId::Monokai;
+    r.app.style_dirty = true;
+    r.set_text("#!/bin/bash\necho hi\n");
+    r.act(Action::Print);
+    wait_print_pages(&mut r);
+    let ui = print_ui(&mut r);
+    let pages = ui.pages.as_ref().expect("Seiten");
+    assert!(!pages.is_empty());
+    let run = pages[0].runs.iter().find(|x| x.text.contains("echo")).expect("Run mit echo");
+    let s = crate::theme::paper_syntax(false);
+    let paper = [s.fg, s.comment, s.string, s.number, s.keyword, s.typ, s.pre, s.op, s.func, s.bad, s.attr, s.inserted];
+    let rgb = |h: u32| [(h >> 16) as u8, (h >> 8) as u8, h as u8];
+    assert_ne!(run.color, [0, 0, 0], "Bash ist erkannt und eingefärbt");
+    assert!(paper.iter().any(|&c| rgb(c) == run.color), "Farbe {:?} stammt nicht vom Papier", run.color);
+}
+
+#[test]
+fn print_selection_keeps_line_numbers() {
+    let mut r = Rig::new();
+    if print_font_missing(&r) {
+        return;
+    }
+    r.set_text("eins\nzwei\ndrei");
+    r.app.cur_view_mut().sels = SelSet::range(5, 10);
+    assert!(r.app.can_print_selection());
+    r.act(Action::Print);
+    print_ui(&mut r).sel = crate::ui_print::PageSel::Selection;
+    wait_print_pages(&mut r);
+    let ui = print_ui(&mut r);
+    let runs: Vec<&crate::print::Run> = ui.shown().iter().flat_map(|p| &p.runs).collect();
+    let nums: Vec<&str> = runs
+        .iter()
+        .filter(|x| x.color == crate::print::GRAY && x.text.chars().all(|c| c.is_ascii_digit()))
+        .map(|x| x.text.as_str())
+        .collect();
+    assert_eq!(nums, ["2"]);
+    assert!(runs.iter().any(|x| x.text == "zwei"));
+    assert!(!runs.iter().any(|x| x.text.contains("eins") || x.text.contains("drei")));
+}
+
+#[test]
+fn print_selection_disabled_for_multiple_cursors() {
+    let mut r = Rig::new();
+    r.set_text("abc\ndef");
+    r.app.cur_view_mut().sels = SelSet::range(0, 2);
+    assert!(r.app.can_print_selection());
+    r.app.cur_view_mut().sels = SelSet { sels: vec![crate::doc::Sel::new(0, 1), crate::doc::Sel::new(4, 5)], primary: 0 };
+    assert!(!r.app.can_print_selection());
+    r.app.cur_view_mut().sels = SelSet::single(1);
+    assert!(!r.app.can_print_selection(), "leere Auswahl");
+}
+
+#[test]
+fn print_page_range_keeps_total() {
+    let mut r = Rig::new();
+    if print_font_missing(&r) {
+        return;
+    }
+    let text: String = (1..=200).map(|i| format!("Zeile {i}\n")).collect();
+    r.set_text(&text);
+    r.act(Action::Print);
+    wait_print_pages(&mut r);
+    let total = print_ui(&mut r).pages.as_ref().unwrap().len();
+    assert!(total >= 2, "200 Zeilen brauchen mehrere Seiten");
+    print_ui(&mut r).sel = crate::ui_print::PageSel::Range(2, 2);
+    r.frames(2);
+    let ui = print_ui(&mut r);
+    assert_eq!(ui.shown().len(), 1);
+    let footer = crate::t!("print.footer").replace("{page}", "2").replace("{total}", &total.to_string());
+    assert!(ui.shown()[0].runs.iter().any(|x| x.text == footer), "Fuß {footer:?}");
+}
+
+#[test]
+fn print_rebuilds_after_edit() {
+    let mut r = Rig::new();
+    if print_font_missing(&r) {
+        return;
+    }
+    r.set_text("alpha");
+    r.act(Action::Print);
+    wait_print_pages(&mut r);
+    assert!(print_texts(&mut r).iter().any(|t| t.contains("alpha")));
+    let rev = r.app.cur_doc().rev;
+    r.set_text("beta");
+    assert_ne!(r.app.cur_doc().rev, rev);
+    wait_print_pages(&mut r);
+    let texts = print_texts(&mut r);
+    assert!(texts.iter().any(|t| t.contains("beta")));
+    assert!(!texts.iter().any(|t| t.contains("alpha")));
 }
 
 #[test]

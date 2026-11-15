@@ -1,10 +1,11 @@
-// Wird entfernt, sobald der Druckdialog angebunden ist (Task 7).
-#![allow(dead_code)]
 //! Drucken: plattformunabhängiger Seitenaufbau. Vorschau, PDF und Windows-GDI
 //! zeichnen nur, was `layout::paginate` liefert, und rechnen nichts selbst.
 
+// Unter Windows nur für die Tests der Auswertung übersetzt.
+#[cfg(any(test, all(unix, not(target_os = "macos"))))]
 pub mod cups;
 pub mod font;
+pub mod job;
 pub mod layout;
 pub mod pdf;
 #[cfg(all(unix, not(target_os = "macos")))]
@@ -12,11 +13,8 @@ mod sys_linux;
 #[cfg(windows)]
 mod sys_windows;
 
-// Wird ab dem Druckdialog (Task 7) benutzt.
-#[allow(unused_imports)]
 #[cfg(all(unix, not(target_os = "macos")))]
 pub use sys_linux::{paper_for, print_pages, printers};
-#[allow(unused_imports)]
 #[cfg(windows)]
 pub use sys_windows::{paper_for, print_pages, printers, properties};
 
@@ -45,6 +43,7 @@ pub struct SrcLine {
     pub spans: Vec<crate::highlight::Span>,
 }
 
+/// Farbe oder Schwarzweiß steckt schon in den Abschnitten (`paper_spans`).
 pub struct LayoutOpts {
     pub size: f32,
     pub line_numbers: bool,
@@ -54,7 +53,6 @@ pub struct LayoutOpts {
     pub header_right: String,
     /// Mit `{page}` und `{total}`.
     pub footer: String,
-    pub mono: bool,
 }
 
 /// Schriftmaße; alle Werte bei 1 pt Schriftgröße.

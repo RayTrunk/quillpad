@@ -144,6 +144,7 @@ pub enum Dialog {
     ConfirmReplaceFiles { count_hint: String },
     HugeOpen { path: PathBuf },
     Update { release: crate::update::Release, auto: bool },
+    Print(Box<crate::ui_print::PrintUi>),
 }
 
 pub struct Shot {
@@ -198,6 +199,11 @@ pub struct App {
     update_rx: Option<(std::sync::mpsc::Receiver<crate::update::Outcome>, bool)>,
     /// Gefundene neuere Version, die gezeigt wird, sobald kein anderer Dialog offen ist.
     update_found: Option<crate::update::Release>,
+    /// Laufender Druck oder PDF-Export; true = PDF.
+    pub print_rx: Option<(crate::ui_print::OutRx, bool)>,
+    /// Fenster-Handle (HWND) für den Treiberdialog unter Windows; 0 = keins (z. B. in Tests).
+    #[cfg_attr(not(windows), allow(dead_code))]
+    pub hwnd: isize,
     pub test_clicks: Vec<egui::Pos2>,
     last_title: String,
     last_backup: Instant,
@@ -256,6 +262,8 @@ impl App {
             session_dirty_probe: 0,
             update_rx: None,
             update_found: None,
+            print_rx: None,
+            hwnd: 0,
         };
         app.restore_session();
         for f in files {
@@ -321,6 +329,7 @@ impl App {
                 "shortcuts" => self.dialog = Some(Dialog::Shortcuts),
                 "goto" => self.pending.push(Action::GoToDialog),
                 "column" => self.pending.push(Action::ColumnEditor),
+                "print" => self.pending.push(Action::Print),
                 "selectall" => self.pending.push(Action::Cmd(crate::commands::Cmd::SelectAll)),
                 _ => {}
             }
@@ -1121,7 +1130,7 @@ impl App {
                 }
                 self.focus_editor();
             }
-            Action::Print => self.print_preview(),
+            Action::Print => self.open_print(),
             Action::Exit => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
             Action::OpenExplorer => {
                 if let Some(p) = self.cur_doc().path.clone() {
@@ -1439,17 +1448,6 @@ impl App {
         }
     }
 
-    /// Druckansicht: der farbige Text als Seite im Browser, die den Druckdialog öffnet.
-    fn print_preview(&mut self) {
-        let id = self.cur_id();
-        let html = print_html(self.docs.get_mut(&id).expect("offen"));
-        let path = std::env::temp_dir().join(format!("quillpad-druck-{}.html", std::process::id()));
-        match std::fs::write(&path, html) {
-            Ok(()) => open_external(&path),
-            Err(e) => self.message(&crate::t!("app.print"), crate::t!("msg.print_failed", error = e)),
-        }
-    }
-
     // ---------- Hauptschleife ----------
 
     /// Sprache nach einer Änderung neu bestimmen, solange sie nicht von Hand gewählt wurde.
@@ -1495,6 +1493,7 @@ impl App {
         self.draw_dialogs(ctx);
         self.poll_find_job(ctx);
         self.poll_update();
+        self.poll_print();
         self.run_pending(ctx);
         if self.storage.is_some() {
             self.timers();
@@ -1549,43 +1548,6 @@ impl App {
     }
 }
 
-/// Der farbige Text als Webseite, die beim Öffnen den Druckdialog zeigt.
-pub fn print_html(d: &mut Document) -> String {
-    let n = d.lines();
-    let colored = n < 200_000;
-    if colored {
-        while !d.hl.ensure(&d.text, 0, n, Duration::from_secs(10)) {}
-    }
-    let esc = |s: &str| s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;");
-    let name = esc(&d.name());
-    let mut html = format!(
-        "<!doctype html><meta charset=\"utf-8\"><title>{name}</title><style>body{{font:10pt 'Courier New',monospace;color:#000}}pre{{white-space:pre-wrap;margin:0}}</style><body onload=\"window.print()\"><pre>"
-    );
-    for l in 0..n {
-        let text = d.line_text(l);
-        match d.hl.spans(l).filter(|s| colored && !s.is_empty()) {
-            Some(spans) => {
-                let chars: Vec<char> = text.chars().collect();
-                let mut i = 0usize;
-                for s in spans.iter() {
-                    let end = (i + s.chars as usize).min(chars.len());
-                    let piece: String = chars[i..end].iter().collect();
-                    let weight = if s.bold { "font-weight:bold;" } else { "" };
-                    html.push_str(&format!(
-                        "<span style=\"{weight}color:#{:02x}{:02x}{:02x}\">{}</span>",
-                        s.color.r(), s.color.g(), s.color.b(), esc(&piece)
-                    ));
-                    i = end;
-                }
-            }
-            None => html.push_str(&esc(&text)),
-        }
-        html.push('\n');
-    }
-    html.push_str("</pre>");
-    html
-}
-
 pub fn mtime(p: &Path) -> Option<std::time::SystemTime> {
     std::fs::metadata(p).and_then(|m| m.modified()).ok()
 }
@@ -1608,13 +1570,31 @@ pub fn open_external(p: &Path) {
     let _ = std::process::Command::new("xdg-open").arg(p).spawn();
 }
 
+/// HWND des Hauptfensters aus `raw_window_handle`; 0, wenn es keins gibt.
+#[cfg(windows)]
+fn win_hwnd(frame: &eframe::Frame) -> isize {
+    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    match frame.window_handle().map(|h| h.as_raw()) {
+        Ok(RawWindowHandle::Win32(h)) => h.hwnd.get(),
+        _ => 0,
+    }
+}
+
 impl eframe::App for App {
-    fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
+    fn update(&mut self, ctx: &Context, frame: &mut eframe::Frame) {
+        #[cfg(windows)]
+        if self.hwnd == 0 {
+            self.hwnd = win_hwnd(frame);
+        }
+        #[cfg(not(windows))]
+        let _ = frame;
         self.frame(ctx);
+        // Bildschirmfoto erst, wenn die Druckvorschau fertig berechnet ist.
+        let print_busy = matches!(&self.dialog, Some(Dialog::Print(p)) if !p.ready());
         let Some(shot) = self.shot.as_mut() else { return };
         ctx.request_repaint();
         shot.frame += 1;
-        if shot.frame >= 120 && !shot.sent {
+        if shot.frame >= 120 && !shot.sent && !print_busy {
             shot.sent = true;
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::UserData::default()));
         }

@@ -170,7 +170,7 @@ mod tests {
         let o = LayoutOpts {
             size: 10.0, line_numbers: true, header_footer: true, tab_size: 4,
             header_left: "datei.rs".into(), header_right: "heute".into(),
-            footer: "{page}/{total}".into(), mono: true,
+            footer: "{page}/{total}".into(),
         };
         let mut texts = vec!["fn main() {}".to_string(), "Grüße 一".to_string(), "Smiley \u{1F600} Ende".to_string()];
         texts.extend((0..80).map(|i| format!("Füllung {i}")));

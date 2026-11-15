@@ -83,8 +83,13 @@ pub(crate) fn print_to(
     {
         let d = dm.dm();
         d.Anonymous1.Anonymous1.dmCopies = copies.clamp(1, i16::MAX as u32) as i16;
-        d.dmDuplex = if duplex { DMDUP_VERTICAL } else { DMDUP_SIMPLEX };
-        d.dmFields = DEVMODE_FIELD_FLAGS(d.dmFields.0 | DM_COPIES.0 | DM_DUPLEX.0);
+        d.dmFields = DEVMODE_FIELD_FLAGS(d.dmFields.0 | DM_COPIES.0);
+        // Das Druckfenster hat unter Windows keine Duplex-Wahl: ohne `duplex` bleibt die
+        // Einstellung des Treibers (oder aus „Eigenschaften…“) unangetastet.
+        if duplex {
+            d.dmDuplex = DMDUP_VERTICAL;
+            d.dmFields = DEVMODE_FIELD_FLAGS(d.dmFields.0 | DM_DUPLEX.0);
+        }
     }
     let name = wide(printer);
     // SAFETY: Name nullterminiert, DEVMODE vom Treiber mit geänderten Kopien/Duplex.
@@ -257,7 +262,7 @@ mod tests {
         let o = LayoutOpts {
             size: 10.0, line_numbers: true, header_footer: true, tab_size: 4,
             header_left: "gdi.rs".into(), header_right: "heute".into(),
-            footer: "{page}/{total}".into(), mono: true,
+            footer: "{page}/{total}".into(),
         };
         let mut texts = vec!["fn main() {}".to_string(), "Grüße 一 \u{1F600} Ende".to_string()];
         texts.extend((0..80).map(|i| format!("Füllung {i}")));

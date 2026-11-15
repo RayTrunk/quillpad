@@ -182,7 +182,7 @@ mod tests {
         LayoutOpts {
             size: 10.0, line_numbers: false, header_footer: false, tab_size: 4,
             header_left: String::new(), header_right: String::new(),
-            footer: "{page}/{total}".into(), mono: true,
+            footer: "{page}/{total}".into(),
         }
     }
 
