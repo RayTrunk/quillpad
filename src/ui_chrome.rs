@@ -38,8 +38,13 @@ pub const FONT_CHOICES: [(&str, &[&str], &[&str]); 4] = [
     ),
 ];
 
+/// Ersatzschriften für Symbole und Emoji, in Wunschreihenfolge. Auch der Druck nutzt sie.
+pub(crate) const SYM_FONTS: &[&str] = &["seguisym.ttf", "DejaVuSans.ttf", "NotoSansSymbols2-Regular.ttf", "Symbola.ttf"];
+/// Ersatzschriften für chinesische, japanische und koreanische Zeichen.
+pub(crate) const CJK_FONTS: &[&str] = &["msyh.ttc", "NotoSansCJK-Regular.ttc", "wqy-microhei.ttc", "wqy-zenhei.ttc", "DroidSansFallbackFull.ttf"];
+
 /// Die Ordner, in denen das Betriebssystem seine Schriften ablegt.
-fn font_dirs() -> Vec<PathBuf> {
+pub(crate) fn font_dirs() -> Vec<PathBuf> {
     if cfg!(windows) {
         let win = std::env::var_os("WINDIR").map(PathBuf::from).unwrap_or_else(|| "C:\\Windows".into());
         return vec![win.join("Fonts")];
@@ -54,7 +59,7 @@ fn font_dirs() -> Vec<PathBuf> {
 }
 
 /// Alle Schriftdateien des Systems, einmal eingelesen. Linux sortiert sie in Unterordner.
-fn font_index() -> &'static HashMap<String, PathBuf> {
+pub(crate) fn font_index() -> &'static HashMap<String, PathBuf> {
     static INDEX: OnceLock<HashMap<String, PathBuf>> = OnceLock::new();
     INDEX.get_or_init(|| {
         let mut map = HashMap::new();
@@ -91,9 +96,7 @@ pub fn setup_fonts(ctx: &Context, editor_font: &str, retro: bool) {
         }
     };
     let mut fallbacks: Vec<String> = Vec::new();
-    let sym: &[&str] = &["seguisym.ttf", "DejaVuSans.ttf", "NotoSansSymbols2-Regular.ttf", "Symbola.ttf"];
-    let cjk: &[&str] = &["msyh.ttc", "NotoSansCJK-Regular.ttc", "wqy-microhei.ttc", "wqy-zenhei.ttc", "DroidSansFallbackFull.ttf"];
-    for (key, files) in [("sym", sym), ("cjk", cjk)] {
+    for (key, files) in [("sym", SYM_FONTS), ("cjk", CJK_FONTS)] {
         if add(&mut defs, key, files) {
             fallbacks.push(key.to_string());
         }

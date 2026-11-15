@@ -3,6 +3,7 @@
 //! Drucken: plattformunabhängiger Seitenaufbau. Vorschau, PDF und Windows-GDI
 //! zeichnen nur, was `layout::paginate` liefert, und rechnen nichts selbst.
 
+pub mod font;
 pub mod layout;
 
 /// Punkt pro Millimeter.
