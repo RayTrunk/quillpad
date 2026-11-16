@@ -15,6 +15,7 @@ A fast text editor for Windows and Linux, written in Rust with [egui](https://gi
 - Search bar with live match counter, regular expressions and escape sequences; find and replace in files
 - Multiple cursors, block selection, bookmarks, folding, line tools, number sequences
 - Encodings (UTF-8, UTF-16, ANSI and other character sets) and line endings are kept when saving
+- Printing straight from the app with a preview, syntax colours on white paper, line numbers, header and footer
 - Nine colour themes, including Solarized, Nord, Monokai, Sepia, High contrast and a Windows 98 look
 - User interface in English, German and French (follows the system language)
 - Notice when a new version is available (can be turned off)

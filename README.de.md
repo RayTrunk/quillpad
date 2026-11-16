@@ -15,6 +15,7 @@ Ein schneller Texteditor für Windows und Linux, geschrieben in Rust mit [egui](
 - Suchleiste mit Live-Zähler, regulären Ausdrücken und Steuerzeichen; Suchen und Ersetzen in Dateien
 - Mehrere Cursor, Blockauswahl, Lesezeichen, Einklappen, Zeilenwerkzeuge, Zahlenfolgen
 - Kodierungen (UTF-8, UTF-16, ANSI und weitere Zeichensätze) und Zeilenenden bleiben beim Speichern erhalten
+- Drucken direkt aus der App mit Vorschau, Syntaxfarben auf weißem Papier, Zeilennummern, Kopf- und Fußzeile
 - Neun Farbdesigns, darunter Solarized, Nord, Monokai, Sepia, Hoher Kontrast und ein Windows-98-Look
 - Oberfläche auf Englisch, Deutsch und Französisch (folgt der Systemsprache)
 - Hinweis auf neue Versionen (abschaltbar)

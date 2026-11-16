@@ -15,6 +15,7 @@ Un éditeur de texte rapide pour Windows et Linux, écrit en Rust avec [egui](ht
 - Barre de recherche avec compteur en direct, expressions régulières et séquences d’échappement ; rechercher et remplacer dans les fichiers
 - Curseurs multiples, sélection en bloc, signets, repli, outils de lignes, suites de nombres
 - Les encodages (UTF-8, UTF-16, ANSI et d’autres jeux de caractères) et les fins de ligne sont conservés à l’enregistrement
+- Impression directement depuis l’application avec aperçu, coloration syntaxique sur papier blanc, numéros de ligne, en-tête et pied de page
 - Neuf thèmes de couleurs, dont Solarized, Nord, Monokai, Sépia, Contraste élevé et un style Windows 98
 - Interface en anglais, allemand et français (suit la langue du système)
 - Avis lorsqu’une nouvelle version est disponible (désactivable)
