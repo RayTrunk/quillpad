@@ -42,7 +42,7 @@ ttf-parser = "0.25"
 [target.'cfg(windows)'.dependencies]
 # HWND des Hauptfensters für den Treiberdialog (kommt ohnehin mit eframe).
 raw-window-handle = "0.6"
-windows = { version = "0.58", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Graphics_Printing", "Win32_Storage_Xps", "Win32_UI_WindowsAndMessaging"] }
+windows = { version = "0.58", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Graphics_Printing", "Win32_Storage_Xps", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse"] }
 
 # Das Programm wird auch im Entwicklungsbau flüssig: Bibliotheken immer optimiert.
 # Bettet unter Windows Programmsymbol und Versionsangaben in die exe ein (build.rs).

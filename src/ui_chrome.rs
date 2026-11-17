@@ -221,6 +221,32 @@ macro_rules! sct {
     };
 }
 
+#[cfg(test)]
+thread_local! {
+    /// Im Test: „Entf ist gedrückt“, wie es sonst der Tastaturzustand des Systems meldet.
+    pub static DELETE_HELD: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Ist Entf gerade gedrückt? egui meldet Umschalt+Entf unter Windows nur als „Ausschneiden“
+/// ohne Tastenereignis; darum fragt das den Tastaturzustand des Systems. Anderswo kommt
+/// Strg+Umschalt+Entf als normale Taste an und läuft über die Kürzeltabelle.
+#[cfg(all(windows, not(test)))]
+fn delete_held() -> bool {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VK_DELETE};
+    // Höchstes Bit gesetzt: Taste unten (Stand der zuletzt gelesenen Tastaturnachricht).
+    unsafe { GetKeyState(i32::from(VK_DELETE.0)) < 0 }
+}
+
+#[cfg(all(not(windows), not(test)))]
+fn delete_held() -> bool {
+    false
+}
+
+#[cfg(test)]
+fn delete_held() -> bool {
+    cfg!(windows) && DELETE_HELD.with(|h| h.get())
+}
+
 /// Höhe der Leiste mit dem Umschalter Text | Tabelle.
 const VIEW_STRIP_H: f32 = 26.0;
 
@@ -390,13 +416,16 @@ impl App {
         let table_focus = self.table_focused;
         // Tabellenkürzel nur, wenn die Tastatur bei der Tabelle ist (nicht in Such- oder Filterfeld).
         let table_keys = self.cur_view().table.is_some() && (table_focus || !ctx.wants_keyboard_input());
+        let table_editing = self.cur_view().table.as_ref().is_some_and(|t| t.editing.is_some());
         let table = shortcuts();
         ctx.input_mut(|i| {
             let mut fired = Vec::new();
             let mods = i.modifiers;
             i.events.retain(|e| {
-                // Unter Windows kommt Strg+Umschalt+Entf als „Ausschneiden“ an (Umschalt+Entf).
-                if matches!(e, egui::Event::Cut) && table_keys && mods.ctrl && mods.shift {
+                // Unter Windows kommt Strg+Umschalt+Entf als „Ausschneiden“ an (Umschalt+Entf),
+                // genau wie Strg+Umschalt+X; nur der Tastaturzustand verrät, dass es Entf war.
+                // In der Zellbearbeitung gehört Ausschneiden dem Eingabefeld.
+                if matches!(e, egui::Event::Cut) && table_keys && !table_editing && mods.ctrl && mods.shift && delete_held() {
                     fired.push(Action::Table(TableCmd::DeleteRows));
                     return false;
                 }

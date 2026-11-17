@@ -1556,11 +1556,36 @@ fn row_insert_delete_via_shortcuts() {
     r.key(Key::Enter, Modifiers::CTRL);
     assert_eq!(r.text(), "a,b\n,\n", "nur Kopfzeile: erste Datenzeile entsteht");
     assert_eq!(r.app.cur_doc().undo.len(), 4, "jede Aktion ein Schritt");
-    // Unter Windows kommt Strg+Umschalt+Entf als „Ausschneiden“ an.
+    // Unter Windows kommt Strg+Umschalt+Entf als „Ausschneiden“ an, ohne Tastenereignis.
+    if cfg!(windows) {
+        crate::ui_chrome::DELETE_HELD.with(|h| h.set(true));
+        r.frame_mods(vec![Event::Cut], Modifiers::CTRL | Modifiers::SHIFT);
+        crate::ui_chrome::DELETE_HELD.with(|h| h.set(false));
+        r.frames(1);
+        assert_eq!(r.text(), "a,b\n", "auch als Ausschneiden-Ereignis");
+        assert_eq!(r.app.cur_doc().undo.len(), 5);
+    }
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn ctrl_shift_x_in_table_does_not_delete_rows() {
+    let mut r = Rig::new();
+    let dir = open_csv(&mut r, "tblcutx", "t.csv", "a,b\n1,2\n3,4\n");
+    // Strg+Umschalt+X kommt ebenfalls als „Ausschneiden“ mit Strg+Umschalt an, aber ohne Entf.
     r.frame_mods(vec![Event::Cut], Modifiers::CTRL | Modifiers::SHIFT);
     r.frames(1);
-    assert_eq!(r.text(), "a,b\n", "auch als Ausschneiden-Ereignis");
-    assert_eq!(r.app.cur_doc().undo.len(), 5);
+    assert_eq!(r.text(), "a,b\n,2\n3,4\n", "schneidet die Zelle aus, löscht keine Zeile");
+    assert_eq!(r.copied.as_deref(), Some("1"));
+    // In der Zellbearbeitung gehört Ausschneiden dem Eingabefeld, auch mit gehaltenem Entf.
+    r.key(Key::ArrowDown, Modifiers::NONE);
+    r.typed("x");
+    crate::ui_chrome::DELETE_HELD.with(|h| h.set(true));
+    r.frame_mods(vec![Event::Cut], Modifiers::CTRL | Modifiers::SHIFT);
+    crate::ui_chrome::DELETE_HELD.with(|h| h.set(false));
+    r.frames(1);
+    r.key(Key::Escape, Modifiers::NONE);
+    assert_eq!(r.text(), "a,b\n,2\n3,4\n", "keine Zeile gelöscht");
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
