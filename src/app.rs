@@ -540,6 +540,33 @@ impl App {
 
     pub fn apply_cmd(&mut self, cmd: Cmd) {
         let ctx = self.ctx.clone();
+        if self.cur_view().table.is_some() {
+            // Tabelle: Zwischenablage, Löschen, Alles und Rückgängig wirken auf Zellen; die
+            // Zeilen- und Textbefehle der Textansicht haben hier keine Bedeutung (im Menü grau).
+            use crate::ui_table::EditOp;
+            let op = match cmd {
+                Cmd::Copy => EditOp::Copy,
+                Cmd::Cut => EditOp::Cut,
+                Cmd::Paste(t) => EditOp::Paste(t),
+                Cmd::Delete | Cmd::DeleteSelection => EditOp::Delete,
+                Cmd::SelectAll => EditOp::SelectAll,
+                Cmd::Undo => EditOp::Undo,
+                Cmd::Redo => EditOp::Redo,
+                _ => return,
+            };
+            let p = &mut self.panes[self.active_pane];
+            let Some(i) = p.tabs.len().checked_sub(1).map(|n| p.active.min(n)) else { return };
+            let v = &mut p.tabs[i];
+            let Some(d) = self.docs.get_mut(&v.doc) else { return };
+            let out = crate::ui_table::edit_op(d, v, op);
+            if let Some(clip) = out.clipboard {
+                ctx.copy_text(clip);
+            }
+            if let Some(s) = out.status {
+                self.table_status = Some((s, Instant::now()));
+            }
+            return;
+        }
         if let Some(mut ed) = self.ed() {
             if let Some(clip) = ed.apply(cmd) {
                 ctx.copy_text(clip);

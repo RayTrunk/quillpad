@@ -1005,44 +1005,47 @@ impl App {
             mi(ui, p, &crate::t!("menu.delete"), "Del", Action::Cmd(Cmd::DeleteSelection));
             mi(ui, p, &crate::t!("menu.select_all"), "Ctrl+A", Action::Cmd(Cmd::SelectAll));
             ui.separator();
-            ui.menu_button(crate::t!("menu.lines"), |ui| {
-                ui.set_min_width(240.0);
-                mi(ui, p, &crate::t!("menu.dup_line"), "Ctrl+D", Action::Cmd(Cmd::DuplicateLines));
-                mi(ui, p, &crate::t!("menu.del_line"), "Ctrl+L", Action::Cmd(Cmd::DeleteLines));
-                mi(ui, p, &crate::t!("menu.line_up"), "Ctrl+Shift+Up", Action::Cmd(Cmd::MoveLinesUp));
-                mi(ui, p, &crate::t!("menu.line_down"), "Ctrl+Shift+Down", Action::Cmd(Cmd::MoveLinesDown));
-                mi(ui, p, &crate::t!("menu.join_lines"), "Ctrl+J", Action::Cmd(Cmd::JoinLines));
-                ui.separator();
-                mi(ui, p, &crate::t!("menu.sort_asc"), "", Action::Cmd(Cmd::SortLines { descending: false, ignore_case: false }));
-                mi(ui, p, &crate::t!("menu.sort_desc"), "", Action::Cmd(Cmd::SortLines { descending: true, ignore_case: false }));
-                mi(ui, p, &crate::t!("menu.sort_asc_nocase"), "", Action::Cmd(Cmd::SortLines { descending: false, ignore_case: true }));
-                ui.separator();
-                mi(ui, p, &crate::t!("menu.dedup"), "", Action::Cmd(Cmd::DedupLines));
-                mi(ui, p, &crate::t!("menu.remove_empty"), "", Action::Cmd(Cmd::RemoveEmptyLines { blank_too: false }));
-                mi(ui, p, &crate::t!("menu.remove_blank"), "", Action::Cmd(Cmd::RemoveEmptyLines { blank_too: true }));
-            });
-            ui.menu_button(crate::t!("menu.case"), |ui| {
-                mi(ui, p, &crate::t!("menu.upper"), "Ctrl+Shift+U", Action::Cmd(Cmd::Case(CaseKind::Upper)));
-                mi(ui, p, &crate::t!("menu.lower"), "Ctrl+U", Action::Cmd(Cmd::Case(CaseKind::Lower)));
-                mi(ui, p, &crate::t!("menu.proper"), "", Action::Cmd(Cmd::Case(CaseKind::Proper)));
-                mi(ui, p, &crate::t!("menu.invert"), "", Action::Cmd(Cmd::Case(CaseKind::Invert)));
-            });
-            ui.menu_button(crate::t!("menu.indent"), |ui| {
-                mi(ui, p, &crate::t!("menu.indent_more"), "Tab", Action::Cmd(Cmd::Indent));
-                mi(ui, p, &crate::t!("menu.indent_less"), "Shift+Tab", Action::Cmd(Cmd::Outdent));
-            });
-            ui.menu_button(crate::t!("menu.whitespace"), |ui| {
-                mi(ui, p, &crate::t!("menu.trim_trailing"), "", Action::Cmd(Cmd::TrimTrailing));
-                mi(ui, p, &crate::t!("menu.trim_leading"), "", Action::Cmd(Cmd::TrimLeading));
-                mi(ui, p, &crate::t!("menu.tabs_to_spaces"), "", Action::Cmd(Cmd::TabsToSpaces));
-                mi(ui, p, &crate::t!("menu.spaces_to_tabs"), "", Action::Cmd(Cmd::LeadingSpacesToTabs));
-            });
-            ui.menu_button(crate::t!("menu.comment"), |ui| {
-                ui.set_min_width(240.0);
-                mi(ui, p, &crate::t!("menu.toggle_line_comment"), "Ctrl+Q", Action::Cmd(Cmd::Comment(None)));
-                mi(ui, p, &crate::t!("menu.comment_line"), "Ctrl+K", Action::Cmd(Cmd::Comment(Some(true))));
-                mi(ui, p, &crate::t!("menu.uncomment"), "Ctrl+Shift+K", Action::Cmd(Cmd::Comment(Some(false))));
-                mi(ui, p, &crate::t!("menu.block_comment"), "Ctrl+Shift+Q", Action::Cmd(Cmd::BlockComment));
+            // Zeilen- und Textbefehle wirken auf die Schreibmarke im Text: in der Tabelle grau.
+            ui.add_enabled_ui(!cur_table, |ui| {
+                ui.menu_button(crate::t!("menu.lines"), |ui| {
+                    ui.set_min_width(240.0);
+                    mi(ui, p, &crate::t!("menu.dup_line"), "Ctrl+D", Action::Cmd(Cmd::DuplicateLines));
+                    mi(ui, p, &crate::t!("menu.del_line"), "Ctrl+L", Action::Cmd(Cmd::DeleteLines));
+                    mi(ui, p, &crate::t!("menu.line_up"), "Ctrl+Shift+Up", Action::Cmd(Cmd::MoveLinesUp));
+                    mi(ui, p, &crate::t!("menu.line_down"), "Ctrl+Shift+Down", Action::Cmd(Cmd::MoveLinesDown));
+                    mi(ui, p, &crate::t!("menu.join_lines"), "Ctrl+J", Action::Cmd(Cmd::JoinLines));
+                    ui.separator();
+                    mi(ui, p, &crate::t!("menu.sort_asc"), "", Action::Cmd(Cmd::SortLines { descending: false, ignore_case: false }));
+                    mi(ui, p, &crate::t!("menu.sort_desc"), "", Action::Cmd(Cmd::SortLines { descending: true, ignore_case: false }));
+                    mi(ui, p, &crate::t!("menu.sort_asc_nocase"), "", Action::Cmd(Cmd::SortLines { descending: false, ignore_case: true }));
+                    ui.separator();
+                    mi(ui, p, &crate::t!("menu.dedup"), "", Action::Cmd(Cmd::DedupLines));
+                    mi(ui, p, &crate::t!("menu.remove_empty"), "", Action::Cmd(Cmd::RemoveEmptyLines { blank_too: false }));
+                    mi(ui, p, &crate::t!("menu.remove_blank"), "", Action::Cmd(Cmd::RemoveEmptyLines { blank_too: true }));
+                });
+                ui.menu_button(crate::t!("menu.case"), |ui| {
+                    mi(ui, p, &crate::t!("menu.upper"), "Ctrl+Shift+U", Action::Cmd(Cmd::Case(CaseKind::Upper)));
+                    mi(ui, p, &crate::t!("menu.lower"), "Ctrl+U", Action::Cmd(Cmd::Case(CaseKind::Lower)));
+                    mi(ui, p, &crate::t!("menu.proper"), "", Action::Cmd(Cmd::Case(CaseKind::Proper)));
+                    mi(ui, p, &crate::t!("menu.invert"), "", Action::Cmd(Cmd::Case(CaseKind::Invert)));
+                });
+                ui.menu_button(crate::t!("menu.indent"), |ui| {
+                    mi(ui, p, &crate::t!("menu.indent_more"), "Tab", Action::Cmd(Cmd::Indent));
+                    mi(ui, p, &crate::t!("menu.indent_less"), "Shift+Tab", Action::Cmd(Cmd::Outdent));
+                });
+                ui.menu_button(crate::t!("menu.whitespace"), |ui| {
+                    mi(ui, p, &crate::t!("menu.trim_trailing"), "", Action::Cmd(Cmd::TrimTrailing));
+                    mi(ui, p, &crate::t!("menu.trim_leading"), "", Action::Cmd(Cmd::TrimLeading));
+                    mi(ui, p, &crate::t!("menu.tabs_to_spaces"), "", Action::Cmd(Cmd::TabsToSpaces));
+                    mi(ui, p, &crate::t!("menu.spaces_to_tabs"), "", Action::Cmd(Cmd::LeadingSpacesToTabs));
+                });
+                ui.menu_button(crate::t!("menu.comment"), |ui| {
+                    ui.set_min_width(240.0);
+                    mi(ui, p, &crate::t!("menu.toggle_line_comment"), "Ctrl+Q", Action::Cmd(Cmd::Comment(None)));
+                    mi(ui, p, &crate::t!("menu.comment_line"), "Ctrl+K", Action::Cmd(Cmd::Comment(Some(true))));
+                    mi(ui, p, &crate::t!("menu.uncomment"), "Ctrl+Shift+K", Action::Cmd(Cmd::Comment(Some(false))));
+                    mi(ui, p, &crate::t!("menu.block_comment"), "Ctrl+Shift+Q", Action::Cmd(Cmd::BlockComment));
+                });
             });
             ui.menu_button(crate::t!("menu.clipboard"), |ui| {
                 mi(ui, p, &crate::t!("menu.full_path"), "", Action::CopyFullPath);
@@ -1050,9 +1053,9 @@ impl App {
                 mi(ui, p, &crate::t!("menu.dir_path"), "", Action::CopyDirPath);
             });
             ui.separator();
-            mi(ui, p, &crate::t!("menu.autocomplete"), "Ctrl+Space", Action::Autocomplete);
-            mi(ui, p, &crate::t!("menu.column_editor"), "Alt+C", Action::ColumnEditor);
-            mi(ui, p, &crate::t!("menu.datetime"), "", Action::InsertDateTime);
+            mi_en(ui, p, &crate::t!("menu.autocomplete"), "Ctrl+Space", !cur_table, Action::Autocomplete);
+            mi_en(ui, p, &crate::t!("menu.column_editor"), "Alt+C", !cur_table, Action::ColumnEditor);
+            mi_en(ui, p, &crate::t!("menu.datetime"), "", !cur_table, Action::InsertDateTime);
         });
 
         ui.menu_button(crate::t!("menu.view"), |ui| {
@@ -1249,7 +1252,8 @@ impl App {
                 d.is_modified(),
                 !d.undo.is_empty(),
                 !d.redo.is_empty(),
-                self.cur_view().sels.sels.iter().any(|s| !s.is_empty()),
+                // In der Tabelle ist immer mindestens die aktive Zelle ausgewählt.
+                self.cur_view().table.is_some() || self.cur_view().sels.sels.iter().any(|s| !s.is_empty()),
                 self.docs.values().any(|x| x.is_modified()),
                 d.read_only,
                 d.monitor,

@@ -2,7 +2,7 @@
 //! weder globale Kürzel noch das Schreibfeld erreichen.
 
 use super::{col_width, content_chars, parsed, set_active, Ctx, Layout, Step, MAX_FIT_CH, MIN_CH, SAMPLE_RECORDS};
-use crate::csv::{self, Parsed};
+use crate::csv::Parsed;
 use crate::editor::Metrics;
 use egui::{Event, Key, Response, Ui};
 use std::sync::Arc;
@@ -228,11 +228,11 @@ fn table_key(
             true
         }
         Event::Copy => {
-            cx.out.clipboard = Some(csv::to_tsv(&cx.selected_values(p, chars)));
+            cx.copy(p, chars);
             true
         }
         Event::Cut => {
-            cx.out.clipboard = Some(csv::to_tsv(&cx.selected_values(p, chars)));
+            cx.copy(p, chars);
             cx.clear_selection(p, chars);
             reparse(cx, p, chars);
             true
@@ -262,13 +262,7 @@ fn table_key(
                     cx.undo(true);
                     reparse(cx, p, chars);
                 }
-                Key::A if ctrl => {
-                    if let (Some(&a), Some(&b)) = (cx.st.rows.rows.first(), cx.st.rows.rows.last()) {
-                        cx.st.anchor = Some((a, 0));
-                        let rev = cx.doc.rev;
-                        set_active(cx.v, cx.st, p, rev, b, last_col);
-                    }
-                }
+                Key::A if ctrl => cx.select_all(p),
                 _ if ctrl && !matches!(key, Key::Home | Key::End | Key::ArrowUp | Key::ArrowDown | Key::ArrowLeft | Key::ArrowRight) => {
                     return false;
                 }

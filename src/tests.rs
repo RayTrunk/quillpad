@@ -1926,3 +1926,27 @@ fn undo_of_paste_with_new_rows_does_not_panic() {
     assert_eq!(table_cell(&mut r).0, 1);
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn menu_paste_copy_and_line_commands_in_table() {
+    let mut r = Rig::new();
+    let dir = open_csv(&mut r, "tblmenupaste", "t.csv", "a,b\n1,2\n3,4\n");
+    r.act(Action::Cmd(Cmd::Paste("x\ty\nq\tr".into())));
+    assert_eq!(r.text(), "a,b\nx,y\nq,r\n", "Einfügen aus dem Menü verteilt auf die Zellen");
+    assert_eq!(r.app.cur_doc().undo.len(), 1);
+    r.act(Action::Cmd(Cmd::SelectAll));
+    r.act(Action::Cmd(Cmd::Copy));
+    assert_eq!(r.copied.as_deref(), Some("x\ty\nq\tr"), "Kopieren aus dem Menü nimmt die Zellen");
+    r.act(Action::Cmd(Cmd::DuplicateLines));
+    r.act(Action::Cmd(Cmd::Case(CaseKind::Upper)));
+    r.act(Action::Cmd(Cmd::Comment(None)));
+    assert_eq!(r.text(), "a,b\nx,y\nq,r\n", "Zeilenbefehle der Textansicht wirken nicht in der Tabelle");
+    r.act(Action::Cmd(Cmd::Cut));
+    assert_eq!(r.text(), "a,b\n,\n,\n", "Ausschneiden leert die Zellen");
+    r.act(Action::Cmd(Cmd::Undo));
+    assert_eq!(r.text(), "a,b\nx,y\nq,r\n");
+    r.act(Action::Cmd(Cmd::Undo));
+    assert_eq!(r.text(), "a,b\n1,2\n3,4\n");
+    assert_eq!(table_state(&mut r).rows.rows, vec![1, 2]);
+    std::fs::remove_dir_all(&dir).unwrap();
+}

@@ -636,6 +636,20 @@ impl Ctx<'_> {
         }
     }
 
+    /// Ausgewählte Zellen als Text für die Zwischenablage.
+    fn copy(&mut self, p: &Parsed, chars: &[char]) {
+        self.out.clipboard = Some(csv::to_tsv(&self.selected_values(p, chars)));
+    }
+
+    /// Alle sichtbaren Zellen auswählen.
+    fn select_all(&mut self, p: &Parsed) {
+        if let (Some(&a), Some(&b)) = (self.st.rows.rows.first(), self.st.rows.rows.last()) {
+            self.st.anchor = Some((a, 0));
+            let rev = self.doc.rev;
+            set_active(self.v, self.st, p, rev, b, self.ncols - 1);
+        }
+    }
+
     fn undo(&mut self, redo: bool) {
         if self.doc.read_only {
             return;
@@ -698,6 +712,46 @@ pub fn commit_edit(doc: &mut Document, v: &mut View, refocus: bool) {
         }
     }
     v.table = Some(st);
+}
+
+/// Befehle aus Menü „Bearbeiten“, Kontextmenü und Werkzeugleiste, wenn der Tab die Tabelle
+/// zeigt: Sie wirken auf Zellen statt auf die Schreibmarke im Text.
+#[derive(Clone, Debug, PartialEq)]
+pub enum EditOp {
+    Copy,
+    Cut,
+    Paste(String),
+    Delete,
+    SelectAll,
+    Undo,
+    Redo,
+}
+
+/// Führt einen Bearbeiten-Befehl in der Tabelle aus; die Tabelle behält den Fokus.
+pub fn edit_op(doc: &mut Document, v: &mut View, op: EditOp) -> TableOut {
+    let mut out = TableOut::default();
+    let Some(mut st) = v.table.take() else { return out };
+    if let Some(d) = shown_dialect(doc) {
+        let (p, chars) = prepare(doc, v, &mut st, d);
+        let ncols = ncols_of(&p);
+        let mut cx = Ctx { doc, v, st: &mut st, d, ncols, out: &mut out };
+        cx.leave_header(&p);
+        match op {
+            EditOp::Copy => cx.copy(&p, &chars),
+            EditOp::Cut => {
+                cx.copy(&p, &chars);
+                cx.clear_selection(&p, &chars);
+            }
+            EditOp::Paste(t) => cx.paste(&p, &t),
+            EditOp::Delete => cx.clear_selection(&p, &chars),
+            EditOp::SelectAll => cx.select_all(&p),
+            EditOp::Undo => cx.undo(false),
+            EditOp::Redo => cx.undo(true),
+        }
+        cx.v.want_focus = true;
+    }
+    v.table = Some(st);
+    out
 }
 
 pub fn show(ui: &mut Ui, doc: &mut Document, v: &mut View, pal: &Palette, m: &mut Metrics, retro: bool) -> TableOut {
