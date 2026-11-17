@@ -1490,3 +1490,17 @@ fn open_cell_edit_is_kept_on_save_and_find() {
     assert_eq!(r.app.docs.values().find(|d| d.path.is_some()).unwrap().full_text(), "a,b\n7,2\n3,8\n", "Tabwechsel übernimmt");
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn ctrl_f_during_cell_edit_moves_typing_to_the_find_field() {
+    let mut r = Rig::new();
+    let dir = open_csv(&mut r, "tblctrlf", "t.csv", "a,b\n1,2\n");
+    r.typed("9");
+    r.key(Key::F, Modifiers::CTRL);
+    r.frames(2);
+    r.typed("xyz");
+    assert_eq!(r.text(), "a,b\n9,2\n", "offene Bearbeitung übernommen, Suchtext nicht in der Zelle");
+    assert!(r.app.find.what.ends_with("xyz"), "Suchfeld hat den Text: {:?}", r.app.find.what);
+    assert!(r.app.cur_view().table.as_ref().unwrap().editing.is_none());
+    std::fs::remove_dir_all(&dir).unwrap();
+}

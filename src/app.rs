@@ -383,12 +383,13 @@ impl App {
         }
     }
 
-    /// Offene Zellbearbeitungen aller Tabellen in den Text übernehmen.
-    pub fn commit_table_edits(&mut self) {
+    /// Offene Zellbearbeitungen aller Tabellen in den Text übernehmen; `refocus` siehe
+    /// `ui_table::commit_edit`.
+    pub fn commit_table_edits(&mut self, refocus: bool) {
         for p in self.panes.iter_mut() {
             for v in p.tabs.iter_mut().filter(|v| v.table.as_ref().is_some_and(|t| t.editing.is_some())) {
                 if let Some(d) = self.docs.get_mut(&v.doc) {
-                    crate::ui_table::commit_edit(d, v);
+                    crate::ui_table::commit_edit(d, v, refocus);
                 }
             }
         }
@@ -396,7 +397,7 @@ impl App {
 
     /// Text- oder Tabellenansicht des aktuellen Tabs; große Dateien bleiben Text.
     pub fn toggle_table(&mut self) {
-        self.commit_table_edits();
+        self.commit_table_edits(false);
         let id = self.cur_id();
         let on = self.cur_view().table.is_some();
         let Some(d) = self.docs.get_mut(&id) else { return };
@@ -558,6 +559,8 @@ impl App {
     // ---------- Dateien ----------
 
     pub fn activate_doc(&mut self, id: DocId) -> bool {
+        // Tabwechsel außerhalb von `run` (Treffer, schon offene Datei): nichts offen lassen.
+        self.commit_table_edits(false);
         for pane in 0..2 {
             if let Some(i) = self.panes[pane].tabs.iter().position(|v| v.doc == id) {
                 self.panes[pane].active = i;
@@ -1117,7 +1120,27 @@ impl App {
     pub fn run(&mut self, ctx: &Context, a: Action) {
         self.sync_views();
         // Speichern, Schließen, Tabwechsel, Springen: nichts Getipptes darf verloren gehen.
-        self.commit_table_edits();
+        // Den Fokus bekommt die Tabelle nur zurück, wo die Aktion ihn nicht woandershin legt
+        // (Suchleiste, Dialoge).
+        let refocus = matches!(
+            a,
+            Action::Cmd(_)
+                | Action::Paste
+                | Action::Save
+                | Action::SaveAs
+                | Action::SaveCopy
+                | Action::SaveAll
+                | Action::FindNext
+                | Action::FindPrev
+                | Action::FindSelectedNext
+                | Action::BookmarkToggle
+                | Action::BookmarkNext
+                | Action::BookmarkPrev
+                | Action::ZoomIn
+                | Action::ZoomOut
+                | Action::ZoomReset
+        );
+        self.commit_table_edits(refocus);
         match a {
             Action::Cmd(c) => self.apply_cmd(c),
             Action::Paste => match arboard::Clipboard::new().and_then(|mut c| c.get_text()) {
@@ -1618,7 +1641,7 @@ impl App {
             }
         }
         if ctx.input(|i| i.viewport().close_requested()) && !self.close_confirmed {
-            self.commit_table_edits();
+            self.commit_table_edits(false);
             if self.settings.remember_session && self.storage.is_some() {
                 // Alles Ungespeicherte wandert in die Sitzung und ist beim nächsten Start wieder da.
                 if let Some(r) = ctx.input(|i| i.viewport().inner_rect) {

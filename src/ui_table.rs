@@ -425,7 +425,7 @@ impl Ctx<'_> {
             .filter_map(|vr| self.st.rows.rows.get(vr))
             .map(|&rec| {
                 (c0..=c1)
-                    .map(|c| p.records[rec].fields.get(c).map(|f| field_value(chars, f)).unwrap_or_default())
+                    .map(|c| p.records.get(rec).and_then(|r| r.fields.get(c)).map(|f| field_value(chars, f)).unwrap_or_default())
                     .collect()
             })
             .collect()
@@ -507,8 +507,14 @@ impl Ctx<'_> {
 }
 
 /// Offene Zellbearbeitung übernehmen, z. B. vor Speichern, Schließen oder Tabwechsel.
-pub fn commit_edit(doc: &mut Document, v: &mut View) {
+/// `refocus`: die Tabelle bekommt den Fokus zurück (nicht, wenn die Aktion ihn woandershin legt).
+/// Hat sich der Text inzwischen fremd geändert, verfällt die Bearbeitung wie beim Zeichnen.
+pub fn commit_edit(doc: &mut Document, v: &mut View, refocus: bool) {
     let Some(mut st) = v.table.take() else { return };
+    if st.editing.is_some() && st.seen_rev != doc.rev {
+        st.editing = None;
+        st.edit_at = None;
+    }
     if st.editing.is_some() {
         match shown_dialect(doc) {
             Some(d) => {
@@ -517,7 +523,7 @@ pub fn commit_edit(doc: &mut Document, v: &mut View) {
                 let mut out = TableOut::default();
                 Ctx { doc, v, st: &mut st, d, ncols, out: &mut out }.commit(Step::Stay);
                 // Wer gerade tippte, tippt in der Tabelle weiter.
-                v.want_focus |= st.focused;
+                v.want_focus |= refocus && st.focused;
             }
             None => st.editing = None,
         }
