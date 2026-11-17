@@ -1191,3 +1191,86 @@ fn new_documents_get_their_language_from_the_first_line() {
     r.set_text("#!/bin/sh\necho");
     assert_eq!(r.app.cur_doc().hl.language.as_deref(), Some("Python"), "von Hand gewählt bleibt gewählt");
 }
+
+#[test]
+fn csv_file_gets_dialect_on_open() {
+    let dir = temp_dir("csvopen");
+    let a = dir.join("x.csv");
+    let b = dir.join("x.txt");
+    std::fs::write(&a, b"a;b\n1;2\n").unwrap();
+    std::fs::write(&b, b"a;b\n1;2\n").unwrap();
+    let mut r = Rig::new();
+    r.app.open_path(&a);
+    r.frames(2);
+    let c = r.app.cur_doc().csv.as_ref().expect("Tabellen-Dokument");
+    assert_eq!(c.dialect, crate::csv::Dialect { delim: ';', header: true });
+    r.app.open_path(&b);
+    r.frames(2);
+    assert!(r.app.cur_doc().csv.is_none());
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn table_edit_is_one_undo_step() {
+    let dir = temp_dir("csvundo");
+    let f = dir.join("x.csv");
+    std::fs::write(&f, b"a,b\n1,2\n3,4\n").unwrap();
+    let mut r = Rig::new();
+    r.app.open_path(&f);
+    r.frames(2);
+    let before = r.text();
+    let d = r.app.cur_doc_mut();
+    let dialect = d.csv.as_ref().unwrap().dialect;
+    let rev = d.rev;
+    let (p, _) = d.csv.as_mut().unwrap().parsed(&d.text, rev);
+    let mut ch = crate::csv::set_cell(&before, &p, dialect, 1, 0, "X");
+    ch.extend(crate::csv::set_cell(&before, &p, dialect, 2, 1, "Y"));
+    assert!(crate::csv::apply_changes(d, ch, &SelSet::single(0), 0));
+    assert_eq!(d.full_text(), "a,b\nX,2\n3,Y\n");
+    assert!(d.is_modified());
+    assert!(d.undo().is_some());
+    assert_eq!(d.full_text(), before);
+    assert!(!d.is_modified());
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn three_cx_cell_edit_saves_bytewise() {
+    let dir = temp_dir("csv3cx");
+    let f = dir.join("kontakte.csv");
+    let orig: &[u8] = b"\xEF\xBB\xBF\"FirstName\",\"Mobile\"\r\n\"Anna\",\"+49 1\"\r\n\"Max\",\"+43 2\"\r\n";
+    std::fs::write(&f, orig).unwrap();
+    let mut r = Rig::new();
+    r.app.open_path(&f);
+    r.frames(2);
+    let text = r.text();
+    let d = r.app.cur_doc_mut();
+    let dialect = d.csv.as_ref().unwrap().dialect;
+    let rev = d.rev;
+    let (p, _) = d.csv.as_mut().unwrap().parsed(&d.text, rev);
+    let ch = crate::csv::set_cell(&text, &p, dialect, 2, 1, "+43 9");
+    assert!(crate::csv::apply_changes(d, ch, &SelSet::single(0), 0));
+    r.act(Action::Save);
+    let expect = String::from_utf8(orig.to_vec()).unwrap().replace("+43 2", "+43 9");
+    assert_eq!(std::fs::read(&f).unwrap(), expect.as_bytes());
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn noop_change_does_not_mark_modified() {
+    let mut r = Rig::new();
+    let d = r.app.cur_doc_mut();
+    assert!(!crate::csv::apply_changes(d, vec![], &SelSet::single(0), 0));
+    assert!(!d.is_modified());
+}
+
+#[test]
+fn csv_cell_positions() {
+    let p = crate::csv::parse("a,\"b c\"\nd,e\n", ',');
+    assert_eq!(crate::csv::cell_at(&p, 0), (0, 0));
+    assert_eq!(crate::csv::cell_at(&p, 4), (0, 1));
+    assert_eq!(crate::csv::cell_at(&p, 9), (1, 0));
+    assert_eq!(crate::csv::cell_at(&p, 999), (1, 1));
+    assert_eq!(crate::csv::cell_pos(&p, 0, 1), 3);
+    assert_eq!(crate::csv::cell_pos(&p, 1, 0), 8);
+}

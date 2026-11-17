@@ -138,6 +138,8 @@ pub struct Document {
     pub monitor: bool,
     /// Große Datei: keine Farben, keine Klammern, keine Wort-Hervorhebung, keine Vervollständigung.
     pub large: bool,
+    /// Tabellenansicht für CSV/TSV-Dateien.
+    pub csv: Option<crate::csv::DocCsv>,
     pub undo: Vec<Group>,
     pub redo: Vec<Group>,
     open: Option<Group>,
@@ -170,6 +172,7 @@ impl Document {
             read_only: false,
             monitor: false,
             large: false,
+            csv: None,
             undo: Vec::new(),
             redo: Vec::new(),
             open: None,

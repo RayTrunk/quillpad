@@ -537,6 +537,7 @@ impl App {
             d.disk_mtime = mtime(&full);
             d.large = large;
             d.hl.set_language(lang);
+            crate::csv::setup(d);
         }
         let pane = self.active_pane;
         let replace_blank = {
@@ -624,6 +625,7 @@ impl App {
                 d.enc = l.enc;
                 d.eol = l.eol;
                 d.disk_mtime = mtime(&path);
+                crate::csv::setup(d);
                 for p in self.panes.iter_mut() {
                     for v in p.tabs.iter_mut().filter(|v| v.doc == id) {
                         v.box_sel = None;
@@ -797,6 +799,7 @@ impl App {
         d.large = self.settings.large_file_enabled && text.len() as u64 >= self.settings.large_file_mb.clamp(1, 4096) << 20;
         d.hl.set_language(if d.large { None } else { t.language.clone() });
         d.hl.manual = t.language_manual;
+        crate::csv::setup(d);
         d.bookmarks = t.bookmarks.iter().copied().filter(|l| *l < d.lines()).collect();
         Some(id)
     }
