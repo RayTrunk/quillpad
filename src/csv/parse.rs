@@ -135,9 +135,10 @@ pub fn field_is_empty(text_chars: &[char], f: &Field) -> bool {
 const DETECT_RECORDS: usize = 50;
 const DETECT_CHARS: usize = 100_000;
 
-fn is_number(s: &str) -> bool {
+/// Zellwert als Zahl, `,` oder `.` als Dezimalzeichen; ohne Ziffer keine Zahl.
+pub fn parse_num(s: &str) -> Option<f64> {
     let t = s.trim().replace(',', ".");
-    t.chars().any(|c| c.is_ascii_digit()) && t.parse::<f64>().is_ok()
+    if t.chars().any(|c| c.is_ascii_digit()) { t.parse().ok() } else { None }
 }
 
 /// Erkennt Trennzeichen und Kopfzeile. `ext` ist die Dateiendung ohne Punkt.
@@ -147,7 +148,7 @@ pub fn detect(text: &str, ext: Option<&str>) -> Dialect {
     let cut = text.char_indices().nth(DETECT_CHARS).map(|(b, _)| b);
     let sample = &text[..cut.unwrap_or(text.len())];
 
-    let delim = if ext.is_some_and(|e| e.eq_ignore_ascii_case("tsv")) {
+    let delim = if ext.is_some_and(|e| e.eq_ignore_ascii_case("tsv") || e.eq_ignore_ascii_case("tab")) {
         '\t'
     } else {
         let mut best: Option<(char, usize)> = None;
@@ -180,7 +181,7 @@ pub fn detect(text: &str, ext: Option<&str>) -> Dialect {
     let header = p.records.first().is_some_and(|r| {
         r.fields.iter().all(|f| {
             let v = field_value(&chars, f);
-            !v.trim().is_empty() && !is_number(&v)
+            !v.trim().is_empty() && parse_num(&v).is_none()
         })
     });
     Dialect { delim, header }
@@ -264,8 +265,7 @@ mod tests {
 
     #[test]
     fn field_is_empty_matches_value() {
-        for t in ["a,,\"\",\"\"\"\",\"x\"y,\"\"z,\"", "\"", "\"\"", ",\"\"\"\"", "\"\"
-\"a"] {
+        for t in ["a,,\"\",\"\"\"\",\"x\"y,\"\"z,\"", "\"", "\"\"", ",\"\"\"\"", "\"\"\n\"a"] {
             let p = parse(t, ',');
             let chars: Vec<char> = t.chars().collect();
             for f in p.records.iter().flat_map(|r| &r.fields) {
@@ -281,6 +281,8 @@ mod tests {
             assert_eq!(detect(&t, None).delim, d, "Trennzeichen {d:?}");
         }
         assert_eq!(detect("a b\nc d\n", Some("tsv")).delim, '\t');
+        assert_eq!(detect("a,b\nc,d\n", Some("tab")).delim, '\t', "auch .tab ist Tab-getrennt");
+        assert_eq!(detect("a,b\nc,d\n", Some("TAB")).delim, '\t');
         assert_eq!(detect("hallo\nwelt\n", None).delim, ',');
     }
 

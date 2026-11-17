@@ -444,8 +444,7 @@ impl App {
             return;
         }
         if !on && d.csv.is_none() {
-            let ext = d.path.as_ref().and_then(|p| p.extension()).map(|e| e.to_string_lossy().to_lowercase());
-            d.csv = Some(crate::csv::DocCsv::new(crate::csv::detect(&d.full_text(), ext.as_deref())));
+            d.csv = Some(crate::csv::DocCsv::new(crate::csv::detect_doc(d)));
         }
         let rev = d.rev;
         let v = self.cur_view_mut();

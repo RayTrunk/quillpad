@@ -1,7 +1,7 @@
 //! Anbindung der Tabelle ans Dokument: Dialekt, Parse-Cache, Änderungen als eine Gruppe.
 
 use super::ops::{back_to_front, file_quotes, Change};
-use super::parse::{detect, field_value, parse, parse_chars, Dialect, Parsed};
+use super::parse::{detect, field_value, parse, parse_chars, Dialect, Field, Parsed};
 use crate::doc::{Document, Kind, SelSet};
 use ropey::Rope;
 use std::path::Path;
@@ -83,11 +83,7 @@ impl DocCsv {
             if n == text.len_chars() || p.records.len() > 1 {
                 let chars: Vec<char> = head.chars().collect();
                 if let Some(r) = p.records.first() {
-                    names = r
-                        .fields
-                        .iter()
-                        .map(|f| field_value(&chars, f).split('\n').next().unwrap_or("").to_string())
-                        .collect();
+                    names = r.fields.iter().map(|f| head_label(&chars, f)).collect();
                 }
             }
         }
@@ -102,11 +98,22 @@ impl DocCsv {
     }
 }
 
+/// Spaltenname aus einem Feld der Kopfzeile: die erste Textzeile des Werts.
+pub fn head_label(chars: &[char], f: &Field) -> String {
+    let v = field_value(chars, f);
+    match v.find('\n') {
+        Some(i) => v[..i].to_string(),
+        None => v,
+    }
+}
+
 /// Wendet Änderungen als eine Undo-Gruppe an. `false`: nichts zu tun.
 pub fn apply_changes(doc: &mut Document, changes: Vec<Change>, before: &SelSet, caret_after: usize) -> bool {
     if changes.is_empty() {
         return false;
     }
+    // Eine offene Gruppe (z. B. vom Tippen) würde die Änderungen sonst still aufnehmen.
+    debug_assert!(!doc.group_open(), "apply_changes mit offener Undo-Gruppe");
     doc.begin(Kind::Other, before);
     for i in back_to_front(&changes) {
         let c = &changes[i];
@@ -116,12 +123,19 @@ pub fn apply_changes(doc: &mut Document, changes: Vec<Change>, before: &SelSet, 
     true
 }
 
+/// Dateiendung ohne Punkt, klein geschrieben.
+fn ext_of(path: Option<&Path>) -> Option<String> {
+    path.and_then(|p| p.extension()).map(|e| e.to_string_lossy().to_lowercase())
+}
+
+/// Dialekt eines Dokuments aus Text und Dateiendung erkennen.
+pub fn detect_doc(doc: &Document) -> Dialect {
+    detect(&doc.full_text(), ext_of(doc.path.as_deref()).as_deref())
+}
+
 /// Endung csv/tsv/tab oder Sprache CSV/TSV.
 pub fn is_table_file(path: Option<&Path>, language: Option<&str>) -> bool {
-    let ext_ok = path
-        .and_then(|p| p.extension())
-        .map(|e| e.to_string_lossy().to_lowercase())
-        .is_some_and(|e| matches!(e.as_str(), "csv" | "tsv" | "tab"));
+    let ext_ok = ext_of(path).is_some_and(|e| matches!(e.as_str(), "csv" | "tsv" | "tab"));
     ext_ok || language.is_some_and(|l| l.eq_ignore_ascii_case("csv") || l.eq_ignore_ascii_case("tsv"))
 }
 
@@ -161,7 +175,6 @@ pub fn cell_pos(p: &Parsed, rec: usize, col: usize) -> usize {
 
 /// Setzt `doc.csv` beim Öffnen/Neuladen: Erkennung nur ohne manuelle Wahl.
 pub fn setup(doc: &mut Document) {
-    let ext = doc.path.as_ref().and_then(|p| p.extension()).map(|e| e.to_string_lossy().to_lowercase());
     if doc.large || !is_table_file(doc.path.as_deref(), doc.hl.language.as_deref()) {
         doc.csv = None;
         return;
@@ -169,6 +182,5 @@ pub fn setup(doc: &mut Document) {
     if doc.csv.as_ref().is_some_and(|c| c.manual) {
         return;
     }
-    let d = detect(&doc.full_text(), ext.as_deref());
-    doc.csv = Some(DocCsv::new(d));
+    doc.csv = Some(DocCsv::new(detect_doc(doc)));
 }

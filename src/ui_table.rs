@@ -176,10 +176,8 @@ fn header_name(p: &Parsed, chars: &[char], d: Dialect, col: usize) -> Option<Str
     if !d.header {
         return None;
     }
-    let f = p.records.first()?.fields.get(col)?;
-    let v = field_value(chars, f);
-    let l = first_line(&v).0;
-    (!l.is_empty()).then(|| l.to_string())
+    let l = csv::head_label(chars, p.records.first()?.fields.get(col)?);
+    (!l.is_empty()).then_some(l)
 }
 
 fn locate(p: &Parsed, v: &View, virt: Option<(u64, usize, usize, usize)>, rev: u64) -> (usize, usize) {
@@ -208,12 +206,7 @@ pub fn col_name(mut i: usize) -> String {
 
 /// Überschrift einer Spalte: Name aus der Kopfzeile, sonst A, B, C …
 fn col_label(p: &Parsed, chars: &[char], d: Dialect, c: usize) -> String {
-    let label = if d.header {
-        p.records.first().and_then(|r| r.fields.get(c)).map(|f| field_value(chars, f)).unwrap_or_default()
-    } else {
-        String::new()
-    };
-    if label.is_empty() { col_name(c) } else { first_line(&label).0.to_string() }
+    header_name(p, chars, d, c).unwrap_or_else(|| col_name(c))
 }
 
 fn ncols_of(p: &Parsed) -> usize {

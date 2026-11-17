@@ -2046,3 +2046,50 @@ fn text_views_do_not_parse_the_table() {
     assert_eq!(d.csv.as_ref().unwrap().parsed_rev(), Some(d.rev));
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+/// Öffnen, Bewegen, Tippen, Zeile einfügen, Rückgängig: nichts davon darf abbrechen.
+fn table_roundtrip_without_panic(name: &str, text: &str) {
+    let mut r = Rig::new();
+    let dir = open_csv(&mut r, &format!("tblnp{name}"), "t.csv", text);
+    assert!(r.app.cur_view().table.is_some(), "{name}: Tabelle");
+    for (key, m) in [
+        (Key::ArrowDown, Modifiers::NONE),
+        (Key::ArrowRight, Modifiers::NONE),
+        (Key::ArrowRight, Modifiers::NONE),
+        (Key::End, Modifiers::NONE),
+        (Key::ArrowDown, Modifiers::CTRL),
+        (Key::Home, Modifiers::CTRL),
+    ] {
+        r.key(key, m);
+    }
+    r.key(Key::End, Modifiers::NONE);
+    r.typed("q");
+    r.key(Key::Enter, Modifiers::NONE);
+    r.key(Key::Enter, Modifiers::CTRL);
+    r.typed("w");
+    r.key(Key::Tab, Modifiers::NONE);
+    r.key(Key::Delete, Modifiers::NONE);
+    let edited = r.text();
+    let steps = r.app.cur_doc().undo.len();
+    for _ in 0..steps {
+        r.key(Key::Z, Modifiers::CTRL);
+    }
+    assert_eq!(r.text(), text, "{name}: alles zurückgenommen");
+    for _ in 0..steps {
+        r.key(Key::Y, Modifiers::CTRL);
+    }
+    assert_eq!(r.text(), edited, "{name}: alles wiederhergestellt");
+    r.act(Action::Table(TableCmd::DeleteRows));
+    r.key(Key::Z, Modifiers::CTRL);
+    r.frames(2);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn table_survives_ragged_empty_unclosed_and_header_only_files() {
+    table_roundtrip_without_panic("ragged", "a,b,c\n1\n2,3\n\n4,5,6,7\n");
+    table_roundtrip_without_panic("empty", "");
+    table_roundtrip_without_panic("unclosed", "a,b\n1,\"offen\n2,3\n");
+    table_roundtrip_without_panic("headeronly", "Name,Phone\n");
+    table_roundtrip_without_panic("headeronlynonl", "Name,Phone");
+}

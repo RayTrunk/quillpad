@@ -249,6 +249,11 @@ impl Document {
         self.text.to_string()
     }
 
+    /// Ist gerade eine Bearbeitungsgruppe offen (zwischen begin und commit)?
+    pub fn group_open(&self) -> bool {
+        self.open.is_some()
+    }
+
     /// Öffnet eine Bearbeitungsgruppe. Tippen und Löschen fassen wir zusammen,
     /// solange sie unmittelbar aufeinander folgen.
     pub fn begin(&mut self, kind: Kind, before: &SelSet) {

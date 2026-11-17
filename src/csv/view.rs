@@ -2,7 +2,7 @@
 //! Ändert nie den Dokumenttext, sondern nur, welche Datensätze in
 //! welcher Reihenfolge sichtbar sind.
 
-use super::parse::{field_value, Dialect, Parsed};
+use super::parse::{field_value, parse_num, Dialect, Parsed};
 use std::cmp::Ordering;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -113,11 +113,6 @@ impl RowView {
     pub fn is_identity(&self) -> bool {
         self.sort.is_none() && self.filter.is_empty()
     }
-}
-
-fn parse_num(s: &str) -> Option<f64> {
-    let t = s.trim().replace(',', ".");
-    if t.chars().any(|c| c.is_ascii_digit()) { t.parse().ok() } else { None }
 }
 
 /// Vergleicht zwei Zellwerte: numerisch oder natürlich ohne Groß/Klein.
