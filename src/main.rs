@@ -4,6 +4,7 @@
 
 mod app;
 mod commands;
+mod csv;
 mod doc;
 mod editor;
 mod fileio;
