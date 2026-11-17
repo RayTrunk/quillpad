@@ -131,15 +131,14 @@ pub fn active_cell(doc: &mut Document, v: &View) -> (usize, usize) {
 /// Angaben der Statusleiste zu einem CSV-Dokument.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CsvStatus {
-    /// Nummer des aktiven Datensatzes ab 1, ohne Kopfzeile gezählt.
-    pub row: usize,
+    /// Nummer des aktiven Datensatzes ab 1, ohne Kopfzeile gezählt; `None` in der Kopfzeile.
+    pub row: Option<usize>,
     /// Anzahl der Datensätze in der Datei (ohne Kopfzeile, ungefiltert).
     pub rows: usize,
     /// Aktive Spalte ab 0.
     pub col: usize,
     /// Name aus der Kopfzeile, wenn es eine gibt und das Feld nicht leer ist.
     pub name: Option<String>,
-    pub ncols: usize,
     /// Textzeile (ab 1), in der ein nie geschlossenes Anführungszeichen beginnt.
     pub unclosed: Option<usize>,
 }
@@ -157,25 +156,18 @@ pub fn status_info(doc: &mut Document, v: &View) -> Option<CsvStatus> {
         .unclosed_line
         .and_then(|r| p.records.get(r))
         .map(|r| doc.text.char_to_line(r.start.min(doc.len())) + 1);
-    Some(CsvStatus { row: (rec + 1).saturating_sub(skip).clamp(1, rows.max(1)), rows, col, name, ncols: ncols_of(&p), unclosed })
+    let row = (rec >= skip).then(|| (rec + 1 - skip).min(rows.max(1)));
+    Some(CsvStatus { row, rows, col, name, unclosed })
 }
 
 /// Spalte an `pos` in der Textansicht und ihr Name aus der Kopfzeile. Die Spalte kommt aus
-/// der Färbung (kein Parsen des ganzen Texts); `None`, solange die dort nicht angekommen ist.
-pub fn text_column(doc: &Document, pos: usize) -> Option<(usize, Option<String>)> {
-    let d = doc.csv.as_ref()?.dialect;
+/// der Färbung (kein Parsen des ganzen Texts); `None`, solange die dort nicht angekommen ist
+/// oder das Dokument im Text nach seiner Sprache gefärbt wird.
+pub fn text_column(doc: &mut Document, pos: usize) -> Option<(usize, Option<String>)> {
     let col = doc.hl.csv_col_at(&doc.text, pos)?;
-    if !d.header {
-        return Some((col, None));
-    }
-    // Nur den Anfang parsen; der erste Datensatz zählt, wenn er darin vollständig ist.
-    const HEAD_CHARS: usize = 8192;
-    let n = doc.len().min(HEAD_CHARS);
-    let head = doc.slice(0, n);
-    let chars: Vec<char> = head.chars().collect();
-    let p = csv::parse(&head, d.delim);
-    let complete = n == doc.len() || p.records.len() > 1;
-    let name = if complete { header_name(&p, &chars, d, col) } else { None };
+    let rev = doc.rev;
+    let names = doc.csv.as_mut()?.header_names(&doc.text, rev);
+    let name = names.get(col).filter(|n| !n.is_empty()).cloned();
     Some((col, name))
 }
 

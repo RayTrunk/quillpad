@@ -1736,33 +1736,55 @@ fn csv_spans_carry_quote_state() {
     assert_eq!(hl.spans(2).unwrap().len(), 3);
 }
 
+fn csv_info(r: &mut Rig) -> crate::ui_table::CsvStatus {
+    let p = &mut r.app.panes[r.app.active_pane];
+    let v = &mut p.tabs[p.active];
+    let d = r.app.docs.get_mut(&v.doc).unwrap();
+    crate::ui_table::status_info(d, v).expect("CSV-Dokument")
+}
+
+/// Spaltenzahl, wie die Tabelle sie aus dem Dialekt des Dokuments zeigt.
+fn csv_ncols(r: &mut Rig) -> usize {
+    let d = r.app.cur_doc_mut();
+    let rev = d.rev;
+    let (p, _) = d.csv.as_mut().unwrap().parsed(&d.text, rev);
+    p.records.iter().map(|x| x.fields.len()).max().unwrap_or(1)
+}
+
 #[test]
 fn switching_delimiter_reparses() {
     let mut r = Rig::new();
     let src = "a;b;c\n1;2,5;3\n4;5;6\n";
     let dir = open_csv(&mut r, "tbldelim", "t.csv", src);
-    let info = |r: &mut Rig| {
-        let p = &mut r.app.panes[r.app.active_pane];
-        let v = &mut p.tabs[p.active];
-        let d = r.app.docs.get_mut(&v.doc).unwrap();
-        crate::ui_table::status_info(d, v).expect("CSV-Dokument")
-    };
-    let i = info(&mut r);
-    assert_eq!((i.ncols, i.rows, i.row), (3, 2, 1));
+    let i = csv_info(&mut r);
+    assert_eq!((csv_ncols(&mut r), i.rows, i.row), (3, 2, Some(1)));
     assert_eq!(i.name.as_deref(), Some("a"));
     let d = r.app.cur_doc().csv.as_ref().unwrap().dialect;
     assert_eq!(d.delim, ';');
-    r.act(Action::CsvDialect(crate::csv::Dialect { delim: ',', ..d }));
-    let i = info(&mut r);
-    assert_eq!(i.ncols, 2, "mit Komma andere Spaltenzahl");
+    let ctx = r.ctx.clone();
+    r.app.run(&ctx, Action::CsvDialect(crate::csv::Dialect { delim: ',', ..d }));
+    assert_eq!(r.app.cur_doc().hl.csv_delim(), Some(','), "Textfarben folgen sofort, nicht erst im nächsten Bild");
+    r.frames(2);
+    assert_eq!(csv_ncols(&mut r), 2, "mit Komma andere Spaltenzahl");
     assert_eq!(r.text(), src, "Text unverändert");
     assert!(!r.app.cur_doc().is_modified());
-    assert_eq!(r.app.cur_doc().hl.csv_delim(), Some(','), "Textfarben folgen dem Trennzeichen");
     r.act(Action::CsvDialect(crate::csv::Dialect { delim: ',', header: false }));
-    let i = info(&mut r);
+    let i = csv_info(&mut r);
     assert_eq!(i.rows, 3, "ohne Kopfzeile zählt jede Zeile");
     assert_eq!(i.name, None);
     assert!(r.app.cur_doc().csv.as_ref().unwrap().manual);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn header_row_has_no_number() {
+    let mut r = Rig::new();
+    let dir = open_csv(&mut r, "tblheadrow", "t.csv", "a,b\n1,2\n3,4\n");
+    r.app.cur_view_mut().sels = SelSet::single(0);
+    let i = csv_info(&mut r);
+    assert_eq!((i.row, i.rows), (None, 2), "Kopfzeile ist keine Zeile 1");
+    r.app.cur_view_mut().sels = SelSet::single(4);
+    assert_eq!(csv_info(&mut r).row, Some(1));
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
@@ -1774,11 +1796,40 @@ fn text_view_status_names_column_and_unclosed_quote() {
     assert!(r.app.cur_view().table.is_none());
     r.app.cur_view_mut().sels = SelSet::single(18);
     r.frames(2);
-    let (pos, d) = (r.app.cur_view().sels.main().head, r.app.cur_doc());
-    assert_eq!(crate::ui_table::text_column(d, pos), Some((1, Some("Mobile".to_string()))));
-    let p = &mut r.app.panes[r.app.active_pane];
-    let v = &mut p.tabs[p.active];
-    let d = r.app.docs.get_mut(&v.doc).unwrap();
-    assert_eq!(crate::ui_table::status_info(d, v).unwrap().unclosed, Some(2), "Zeile 2 im Text, ab 1 gezählt");
+    let pos = r.app.cur_view().sels.main().head;
+    assert_eq!(crate::ui_table::text_column(r.app.cur_doc_mut(), pos), Some((1, Some("Mobile".to_string()))));
+    assert_eq!(csv_info(&mut r).unclosed, Some(2), "Zeile 2 im Text, ab 1 gezählt");
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn table_toggle_keeps_language_colours_of_code() {
+    let mut r = Rig::new();
+    let dir = temp_dir("tblcode");
+    let f = dir.join("a.rs");
+    std::fs::write(&f, "// x\nfn main() {}\n").unwrap();
+    r.app.open_path(&f);
+    r.frames(2);
+    r.act(Action::ToggleTable);
+    assert!(r.app.cur_view().table.is_some());
+    r.act(Action::ToggleTable);
+    r.frames(2);
+    let d = r.app.cur_doc();
+    assert!(d.csv.is_some(), "Dialekt bleibt vom Umschalten");
+    assert_eq!(d.hl.csv_delim(), None, "Rust bleibt Rust");
+    assert_eq!(d.hl.language.as_deref(), Some("Rust"));
+    let comment = crate::theme::syntax(crate::theme::ThemeId::Light).comment;
+    let c = d.hl.spans(0).expect("gefärbt")[0].color;
+    assert_eq!((c.r(), c.g(), c.b()), ((comment >> 16) as u8, (comment >> 8) as u8, comment as u8));
+
+    // Normaler Text als Tabelle gezeigt: im Text Spaltenfarben.
+    let g = dir.join("liste.txt");
+    std::fs::write(&g, "a;b\n1;2\n").unwrap();
+    r.app.open_path(&g);
+    r.frames(2);
+    r.act(Action::ToggleTable);
+    r.act(Action::ToggleTable);
+    r.frames(2);
+    assert_eq!(r.app.cur_doc().hl.csv_delim(), Some(';'));
     std::fs::remove_dir_all(&dir).unwrap();
 }

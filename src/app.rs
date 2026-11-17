@@ -1406,11 +1406,15 @@ impl App {
             Action::ToggleTable => self.toggle_table(),
             Action::Table(c) => self.table_cmd(c),
             Action::CsvDialect(dl) => {
-                if let Some(c) = self.cur_doc_mut().csv.as_mut() {
+                let d = self.cur_doc_mut();
+                if let Some(c) = d.csv.as_mut() {
                     if c.dialect != dl {
                         c.set_dialect(dl);
                     }
                 }
+                // Sofort umfärben, damit schon das nächste Bild die neue Spalte meldet.
+                let delim = crate::csv::hl_delim(d);
+                d.hl.set_csv(delim);
             }
             Action::ZoomIn => self.change_font_size(self.settings.font_size + 1.0),
             Action::ZoomOut => self.change_font_size(self.settings.font_size - 1.0),

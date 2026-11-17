@@ -512,7 +512,7 @@ impl App {
         let Some(metrics) = self.metrics.as_mut() else { return };
         doc.hl.set_theme(theme_id);
         // Einzige Stelle, an der die Färbung dem CSV-Dialekt folgt (billig, jedes Bild).
-        doc.hl.set_csv(doc.csv.as_ref().map(|c| c.dialect.delim));
+        doc.hl.set_csv(crate::csv::hl_delim(doc));
         let mut child = ui.new_child(UiBuilder::new().max_rect(edit_rect).id_salt(("pane", pane)));
         if view.table.is_some() && (doc.csv.is_none() || doc.large) {
             view.table = None;
@@ -1342,7 +1342,11 @@ impl App {
                 None => crate::t!("table.status_col_plain", n = group(n + 1)),
             });
             if let Some((row, rows)) = s.row {
-                pos = crate::t!("table.status_row", n = group(row), m = group(rows));
+                pos = match row {
+                    Some(n) => crate::t!("table.status_row", n = group(n), m = group(rows)),
+                    // Schreibmarke in der Kopfzeile: sie hat keine Nummer.
+                    None => crate::t!("table.header_row"),
+                };
                 if let Some(ct) = col_text {
                     pos = format!("{pos} · {ct}");
                 }
@@ -1474,8 +1478,8 @@ impl App {
 /// CSV-Angaben für die Statusleiste des aktiven Tabs.
 struct CsvBar {
     dialect: crate::csv::Dialect,
-    /// Nur in der Tabellenansicht: (Datensatz ab 1, Anzahl Datensätze).
-    row: Option<(usize, usize)>,
+    /// Nur in der Tabellenansicht: (Datensatz ab 1, None in der Kopfzeile; Anzahl Datensätze).
+    row: Option<(Option<usize>, usize)>,
     /// Spalte ab 0 und ihr Name aus der Kopfzeile.
     col: Option<(usize, Option<String>)>,
     /// Textzeile eines nicht geschlossenen Anführungszeichens (nur Tabelle).

@@ -1,7 +1,7 @@
 //! Anbindung der Tabelle ans Dokument: Dialekt, Parse-Cache, Änderungen als eine Gruppe.
 
 use super::ops::Change;
-use super::parse::{detect, parse, Dialect, Parsed};
+use super::parse::{detect, field_value, parse, Dialect, Parsed};
 use crate::doc::{Document, Kind, SelSet};
 use ropey::Rope;
 use std::path::Path;
@@ -14,11 +14,16 @@ pub struct DocCsv {
     /// Vom Nutzer gewählt: wird beim Neuladen nicht mehr überschrieben.
     pub manual: bool,
     cache: Option<Cache>,
+    /// Spaltennamen aus der Kopfzeile für die Textansicht: (Revision, Dialekt, Namen).
+    head: Option<(u64, Dialect, Arc<Vec<String>>)>,
 }
+
+/// So viele Zeichen am Anfang reichen für die Kopfzeile der Textansicht.
+const HEAD_CHARS: usize = 8192;
 
 impl DocCsv {
     pub fn new(dialect: Dialect) -> DocCsv {
-        DocCsv { dialect, manual: false, cache: None }
+        DocCsv { dialect, manual: false, cache: None, head: None }
     }
 
     /// Neu geparst wird nur bei geänderter Revision oder geändertem Dialekt.
@@ -33,6 +38,36 @@ impl DocCsv {
         let c = Arc::new(s.chars().collect::<Vec<char>>());
         self.cache = Some((rev, self.dialect, p.clone(), c.clone()));
         (p, c)
+    }
+
+    /// Spaltennamen aus der Kopfzeile (erste Textzeile je Wert, leer = keiner), ohne den
+    /// ganzen Text zu parsen; leer ohne Kopfzeile oder wenn sie über den Anfang hinausreicht.
+    /// Zwischengespeichert je Revision und Dialekt.
+    pub fn header_names(&mut self, text: &Rope, rev: u64) -> Arc<Vec<String>> {
+        if let Some((r, d, names)) = &self.head {
+            if *r == rev && *d == self.dialect {
+                return names.clone();
+            }
+        }
+        let mut names = Vec::new();
+        if self.dialect.header {
+            let n = text.len_chars().min(HEAD_CHARS);
+            let head = text.slice(..n).to_string();
+            let p = parse(&head, self.dialect.delim);
+            if n == text.len_chars() || p.records.len() > 1 {
+                let chars: Vec<char> = head.chars().collect();
+                if let Some(r) = p.records.first() {
+                    names = r
+                        .fields
+                        .iter()
+                        .map(|f| field_value(&chars, f).split('\n').next().unwrap_or("").to_string())
+                        .collect();
+                }
+            }
+        }
+        let names = Arc::new(names);
+        self.head = Some((rev, self.dialect, names.clone()));
+        names
     }
 
     pub fn set_dialect(&mut self, d: Dialect) {
@@ -63,6 +98,15 @@ pub fn is_table_file(path: Option<&Path>, language: Option<&str>) -> bool {
         .map(|e| e.to_string_lossy().to_lowercase())
         .is_some_and(|e| matches!(e.as_str(), "csv" | "tsv" | "tab"));
     ext_ok || language.is_some_and(|l| l.eq_ignore_ascii_case("csv") || l.eq_ignore_ascii_case("tsv"))
+}
+
+/// Trennzeichen, mit dem die Textansicht spaltenweise färbt: nur bei Tabellendateien
+/// (Endung oder Sprache CSV/TSV) oder normalem Text. Ein als Tabelle gezeigtes Rust- oder
+/// JSON-Dokument behält im Text seine Sprachfarben.
+pub fn hl_delim(doc: &Document) -> Option<char> {
+    let c = doc.csv.as_ref()?;
+    let lang = doc.hl.language.as_deref();
+    (lang.is_none() || is_table_file(doc.path.as_deref(), lang)).then_some(c.dialect.delim)
 }
 
 /// Feld, das `pos` enthält; hinter dem letzten Datensatz das letzte Feld.
