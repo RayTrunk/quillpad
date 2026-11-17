@@ -102,6 +102,8 @@ pub fn set_cell(text: &str, p: &Parsed, d: Dialect, rec: usize, col: usize, valu
     vec![Change { start: r.end, end: r.end, text: t }]
 }
 
+/// Fügt einen leeren Datensatz ein, der danach Index `at` hat (`at` gleich
+/// Datensatzzahl hängt ans Ende an).
 pub fn insert_row(text: &str, p: &Parsed, d: Dialect, at: usize) -> Vec<Change> {
     let row = d.delim.to_string().repeat(col_count(p, d).saturating_sub(1));
     let n = text.chars().count();
@@ -112,6 +114,8 @@ pub fn insert_row(text: &str, p: &Parsed, d: Dialect, at: usize) -> Vec<Change> 
     vec![Change { start: n, end: n, text: t }]
 }
 
+/// Löscht Datensätze nach rohem Index (Kopfzeile ist Index 0); den Schutz der
+/// Kopfzeile übernimmt der Aufrufer.
 pub fn delete_rows(text: &str, p: &Parsed, recs: &[usize]) -> Vec<Change> {
     let n = text.chars().count();
     let len = p.records.len();
@@ -155,6 +159,8 @@ fn swap(chars: &[char], a: (usize, usize), b: (usize, usize)) -> Vec<Change> {
     ]
 }
 
+/// Tauscht einen Datensatz mit dem Nachbarn (roher Index; Kopfzeilenschutz ist
+/// Sache des Aufrufers).
 pub fn move_row(text: &str, p: &Parsed, rec: usize, up: bool) -> Vec<Change> {
     let i = if up {
         match rec.checked_sub(1) {
@@ -183,6 +189,7 @@ pub fn insert_col(_text: &str, p: &Parsed, d: Dialect, at: usize) -> Vec<Change>
         .collect()
 }
 
+/// Entfernt Spalte `col`; ein Datensatz mit nur einem Feld wird zur leeren Zeile.
 pub fn delete_col(_text: &str, p: &Parsed, col: usize) -> Vec<Change> {
     let mut out = Vec::new();
     for r in &p.records {
@@ -199,7 +206,9 @@ pub fn delete_col(_text: &str, p: &Parsed, col: usize) -> Vec<Change> {
     out
 }
 
-pub fn move_col(text: &str, p: &Parsed, _d: Dialect, col: usize, left: bool) -> Vec<Change> {
+/// Tauscht Spalte `col` mit ihrem Nachbarn. Hat ein Datensatz nur die linke der
+/// beiden Spalten, wandert deren Wert per Trennzeichen in die rechte Spalte.
+pub fn move_col(text: &str, p: &Parsed, d: Dialect, col: usize, left: bool) -> Vec<Change> {
     let i = if left {
         match col.checked_sub(1) {
             Some(i) => i,
@@ -208,16 +217,27 @@ pub fn move_col(text: &str, p: &Parsed, _d: Dialect, col: usize, left: bool) -> 
     } else {
         col
     };
+    if !p.records.iter().any(|r| r.fields.len() > i + 1) {
+        return vec![];
+    }
     let chars: Vec<char> = text.chars().collect();
     let mut out = Vec::new();
     for r in &p.records {
-        if let (Some(a), Some(b)) = (r.fields.get(i), r.fields.get(i + 1)) {
-            out.extend(swap(&chars, (a.start, a.end), (b.start, b.end)));
+        match (r.fields.get(i), r.fields.get(i + 1)) {
+            (Some(a), Some(b)) => out.extend(swap(&chars, (a.start, a.end), (b.start, b.end))),
+            (Some(a), None) if a.start < a.end => {
+                out.push(Change { start: a.start, end: a.end, text: String::new() });
+                let t = format!("{}{}", d.delim, slice(&chars, a.start, a.end));
+                out.push(Change { start: r.end, end: r.end, text: t });
+            }
+            _ => {}
         }
     }
     out
 }
 
+/// `order` ist eine vollständige Permutation der Datensatzindizes: ab 1, wenn
+/// `d.header` gesetzt ist (Kopfzeile bleibt), sonst ab 0.
 pub fn apply_order(text: &str, p: &Parsed, d: Dialect, order: &[usize]) -> Vec<Change> {
     let first = usize::from(d.header);
     let len = p.records.len();
@@ -459,6 +479,11 @@ mod tests {
         assert_eq!(apply(t, &delete_col(t, &p, 1)), "a\nc\n");
         assert_eq!(apply(t, &move_col(t, &p, d(','), 1, true)), "b,a\nd,c\n");
         assert_eq!(apply(t, &move_col(t, &p, d(','), 0, false)), "b,a\nd,c\n");
+        // Ungleich lange Zeilen: der Wert wandert mit in die andere Spalte
+        let t = "a,b\nc\n";
+        let p = parse(t, ',');
+        assert_eq!(apply(t, &move_col(t, &p, d(','), 0, false)), "b,a\n,c\n");
+        assert_eq!(apply(t, &move_col(t, &p, d(','), 1, true)), "b,a\n,c\n");
     }
 
     #[test]
