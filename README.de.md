@@ -16,6 +16,7 @@ Ein schneller Texteditor für Windows und Linux, geschrieben in Rust mit [egui](
 - Mehrere Cursor, Blockauswahl, Lesezeichen, Einklappen, Zeilenwerkzeuge, Zahlenfolgen
 - Kodierungen (UTF-8, UTF-16, ANSI und weitere Zeichensätze) und Zeilenenden bleiben beim Speichern erhalten
 - Drucken direkt aus der App mit Vorschau, Syntaxfarben auf weißem Papier, Zeilennummern, Kopf- und Fußzeile
+- CSV- und TSV-Dateien öffnen als Tabelle: Zellen bearbeiten, Zeilen und Spalten einfügen, löschen und verschieben, filtern und sortieren; Trennzeichen und Kopfzeile werden automatisch erkannt, außerhalb der bearbeiteten Felder bleibt die Datei unverändert
 - Neun Farbdesigns, darunter Solarized, Nord, Monokai, Sepia, Hoher Kontrast und ein Windows-98-Look
 - Oberfläche auf Englisch, Deutsch und Französisch (folgt der Systemsprache)
 - Hinweis auf neue Versionen (abschaltbar)

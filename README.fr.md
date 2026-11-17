@@ -16,6 +16,7 @@ Un éditeur de texte rapide pour Windows et Linux, écrit en Rust avec [egui](ht
 - Curseurs multiples, sélection en bloc, signets, repli, outils de lignes, suites de nombres
 - Les encodages (UTF-8, UTF-16, ANSI et d’autres jeux de caractères) et les fins de ligne sont conservés à l’enregistrement
 - Impression directement depuis l’application avec aperçu, coloration syntaxique sur papier blanc, numéros de ligne, en-tête et pied de page
+- Les fichiers CSV et TSV s’ouvrent sous forme de tableau : modifier les cellules, insérer, supprimer et déplacer des lignes et des colonnes, filtrer et trier ; le séparateur et la ligne d’en-tête sont détectés automatiquement, et le fichier reste inchangé en dehors des champs modifiés
 - Neuf thèmes de couleurs, dont Solarized, Nord, Monokai, Sépia, Contraste élevé et un style Windows 98
 - Interface en anglais, allemand et français (suit la langue du système)
 - Avis lorsqu’une nouvelle version est disponible (désactivable)
