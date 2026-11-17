@@ -175,3 +175,11 @@ ins_tip = "Insertion ({key})"
 ovr_tip = "Écraser ({key})"
 eol_tip = "Fin de ligne : {eol}"
 lang_tip = "Langage pour la coloration syntaxique"
+
+# Vue tableau pour les fichiers CSV (src/ui_table.rs)
+[table]
+view_text = "Texte"
+view_table = "Tableau"
+switch_tip = "Afficher cet onglet en texte ou en tableau"
+menu_toggle = "Afficher en tableau"
+paste_cut = "Coller : les colonnes en trop ont été coupées."

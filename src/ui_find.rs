@@ -677,7 +677,7 @@ impl App {
             return;
         }
         let acts = if self.find.tab == FindTab::Files { self.files_panel(ctx) } else { self.find_bar(ctx) };
-        if ctx.input(|i| i.key_pressed(egui::Key::Escape)) && !self.editor_focused {
+        if ctx.input(|i| i.key_pressed(egui::Key::Escape)) && !self.editor_focused && !self.table_focused {
             self.find.open = false;
             self.focus_editor();
         }

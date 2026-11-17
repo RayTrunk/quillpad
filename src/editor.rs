@@ -388,6 +388,8 @@ pub struct View {
     pub want_focus: bool,
     pub max_x: f32,
     pub uid: u64,
+    /// Tabellenansicht dieses Tabs; `None` = Textansicht.
+    pub table: Option<Box<crate::ui_table::TableState>>,
     drag_anchor: Option<Sel>,
     gutter_drag: Option<usize>,
     scroll_drag: Option<f32>,
@@ -415,6 +417,7 @@ impl View {
             want_focus: true,
             max_x: 0.0,
             uid: VIEW_UID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+            table: None,
             drag_anchor: None,
             gutter_drag: None,
             scroll_drag: None,

@@ -1274,3 +1274,166 @@ fn csv_cell_positions() {
     assert_eq!(crate::csv::cell_pos(&p, 0, 1), 3);
     assert_eq!(crate::csv::cell_pos(&p, 1, 0), 8);
 }
+
+/// Öffnet `text` als CSV-Datei in einem eigenen Ordner.
+fn open_csv(r: &mut Rig, tag: &str, name: &str, text: &str) -> std::path::PathBuf {
+    let dir = temp_dir(tag);
+    let f = dir.join(name);
+    std::fs::write(&f, text).unwrap();
+    r.app.open_path(&f);
+    r.frames(3);
+    dir
+}
+
+/// Aktive Zelle der Tabelle im aktiven Bereich.
+fn table_cell(r: &mut Rig) -> (usize, usize) {
+    let pane = r.app.active_pane;
+    table_cell_in(r, pane)
+}
+
+fn table_cell_in(r: &mut Rig, pane: usize) -> (usize, usize) {
+    let p = &mut r.app.panes[pane];
+    let v = &mut p.tabs[p.active];
+    let d = r.app.docs.get_mut(&v.doc).unwrap();
+    crate::ui_table::active_cell(d, v)
+}
+
+#[test]
+fn csv_opens_in_table_and_typing_edits_cell() {
+    let mut r = Rig::new();
+    let dir = open_csv(&mut r, "tbltype", "t.csv", "a,b\n1,2\n");
+    assert!(r.app.cur_view().table.is_some(), "CSV startet in der Tabelle");
+    r.key(Key::ArrowDown, Modifiers::NONE);
+    r.typed("9");
+    assert_eq!(r.text(), "a,b\n1,2\n", "erst Enter übernimmt");
+    r.key(Key::Enter, Modifiers::NONE);
+    assert_eq!(r.text(), "a,b\n9,2\n");
+    assert_eq!(r.app.cur_doc().undo.len(), 1, "ein Rückgängig-Schritt");
+    r.key(Key::Z, Modifiers::CTRL);
+    assert_eq!(r.text(), "a,b\n1,2\n", "Strg+Z wirkt in der Tabelle");
+    assert_eq!(table_cell(&mut r), (1, 0), "die geänderte Zelle ist wieder aktiv");
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn f2_edits_cell_not_bookmark() {
+    let mut r = Rig::new();
+    let dir = open_csv(&mut r, "tblf2", "t.csv", "a,b\n1,2\n3,4\n");
+    r.app.cur_doc_mut().bookmarks.insert(2);
+    r.key(Key::ArrowRight, Modifiers::NONE);
+    let before = table_cell(&mut r);
+    assert_eq!(before, (1, 1));
+    r.key(Key::F2, Modifiers::NONE);
+    assert_eq!(table_cell(&mut r), before, "F2 springt nicht zum Lesezeichen");
+    r.typed("X");
+    r.key(Key::Enter, Modifiers::NONE);
+    assert_eq!(r.text(), "a,b\n1,2X\n3,4\n", "F2 bearbeitet den vorhandenen Inhalt");
+    assert_eq!(table_cell(&mut r), (2, 1), "Enter geht nach unten");
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn ctrl_l_in_table_keeps_lines() {
+    let mut r = Rig::new();
+    let dir = open_csv(&mut r, "tblctrll", "t.csv", "a,b\n1,2\n3,4\n");
+    r.key(Key::L, Modifiers::CTRL);
+    r.key(Key::D, Modifiers::CTRL);
+    assert_eq!(r.text(), "a,b\n1,2\n3,4\n", "Zeilenbefehle der Textansicht wirken nicht");
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn split_view_follows_table_edit_and_undo() {
+    let mut r = Rig::new();
+    let dir = open_csv(&mut r, "tblsplit", "t.csv", "a,b\n1,2\n3,4\n");
+    r.act(Action::CloneToOther);
+    assert!(r.app.panes[1].tabs[0].table.is_none(), "rechts Text");
+    assert!(r.app.panes[0].tabs[0].table.is_some(), "links Tabelle");
+    r.app.active_pane = 0;
+    r.app.panes[0].tabs[0].want_focus = true;
+    r.frames(2);
+    r.typed("9");
+    r.key(Key::Enter, Modifiers::NONE);
+    assert_eq!(r.text(), "a,b\n9,2\n3,4\n");
+    assert_eq!(table_cell_in(&mut r, 0), (2, 0));
+    let right = r.app.panes[1].tabs[0].doc;
+    assert_eq!(r.app.docs[&right].full_text(), "a,b\n9,2\n3,4\n", "rechts derselbe Text");
+    r.app.active_pane = 1;
+    r.app.panes[1].tabs[0].want_focus = true;
+    r.frames(2);
+    r.key(Key::Z, Modifiers::CTRL);
+    assert_eq!(r.text(), "a,b\n1,2\n3,4\n", "Rückgängig in der Textansicht");
+    r.frames(2);
+    assert_eq!(table_cell_in(&mut r, 0), (1, 0), "Tabelle zeigt die geänderte Zelle");
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn toggle_table_switches_mode() {
+    let mut r = Rig::new();
+    let dir = open_csv(&mut r, "tbltoggle", "t.txt", "a;b\n1;2\n");
+    assert!(r.app.cur_view().table.is_none());
+    assert!(r.app.cur_doc().csv.is_none());
+    r.act(Action::ToggleTable);
+    assert!(r.app.cur_view().table.is_some(), "über das Menü für jedes Dokument");
+    assert_eq!(r.app.cur_doc().csv.as_ref().unwrap().dialect.delim, ';');
+    r.key(Key::ArrowRight, Modifiers::NONE);
+    assert_eq!(table_cell(&mut r), (1, 1));
+    r.act(Action::ToggleTable);
+    assert!(r.app.cur_view().table.is_none(), "zurück zum Text");
+    r.typed("x");
+    assert_eq!(r.text(), "a;b\n1;x2\n", "Textansicht hat den Fokus und die Stelle");
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn large_doc_has_no_table() {
+    let mut r = Rig::new();
+    r.app.settings.large_file_mb = 1;
+    let mut big = String::from("a,b\n");
+    while big.len() < (1 << 20) {
+        big.push_str("1,2\n");
+    }
+    let dir = open_csv(&mut r, "tbllarge", "big.csv", &big);
+    assert!(r.app.cur_doc().large);
+    assert!(r.app.cur_view().table.is_none(), "große Datei: keine Tabelle");
+    r.act(Action::ToggleTable);
+    assert!(r.app.cur_view().table.is_none(), "auch nicht über das Menü");
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn find_in_table_selects_cell() {
+    let mut r = Rig::new();
+    let dir = open_csv(&mut r, "tblfind", "t.csv", "a,b\n1,2\n");
+    r.key(Key::F, Modifiers::CTRL);
+    assert!(r.app.find.open);
+    r.app.find.what = "2".into();
+    r.app.find.mode = crate::search::Mode::Normal;
+    r.key(Key::F3, Modifiers::NONE);
+    assert_eq!(table_cell(&mut r), (1, 1));
+    assert_eq!(r.text(), "a,b\n1,2\n");
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn table_edit_keys_tab_escape_and_alt_enter() {
+    let mut r = Rig::new();
+    let dir = open_csv(&mut r, "tblkeys", "t.csv", "a,b,c\n1,2,3\n");
+    r.typed("x");
+    r.key(Key::Tab, Modifiers::NONE);
+    assert_eq!(r.text(), "a,b,c\nx,2,3\n");
+    assert_eq!(table_cell(&mut r), (1, 1), "Tab geht nach rechts");
+    r.typed("weg");
+    r.key(Key::Escape, Modifiers::NONE);
+    assert_eq!(r.text(), "a,b,c\nx,2,3\n", "Esc verwirft");
+    assert_eq!(table_cell(&mut r), (1, 1));
+    r.key(Key::F2, Modifiers::NONE);
+    r.key(Key::Enter, Modifiers::ALT);
+    r.typed("y");
+    r.key(Key::Enter, Modifiers::NONE);
+    assert_eq!(r.text(), "a,b,c\nx,\"2\ny\",3\n", "Alt+Enter: Zeilenumbruch im Feld, mit Anführungszeichen");
+    r.key(Key::Delete, Modifiers::NONE);
+    assert_eq!(r.text(), "a,b,c\nx,\"\",3\n", "Entf leert die Zelle, Stil des Feldes bleibt");
+    std::fs::remove_dir_all(&dir).unwrap();
+}

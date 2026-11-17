@@ -93,6 +93,8 @@ pub enum Action {
     ToggleAllSymbols,
     ToggleGuides,
     ToggleLineNumbers,
+    /// Tab zwischen Text- und Tabellenansicht umschalten.
+    ToggleTable,
     ZoomIn,
     ZoomOut,
     ZoomReset,
@@ -182,6 +184,10 @@ pub struct App {
     pub exit_after_close: bool,
     pub shot: Option<Shot>,
     pub editor_focused: bool,
+    /// Eine Tabellenansicht im aktiven Bereich hat den Tastaturfokus.
+    pub table_focused: bool,
+    /// Letzter Hinweis der Tabelle (z. B. abgeschnittenes Einfügen) für die Statusleiste.
+    pub table_status: Option<String>,
     pub show_map: bool,
     pub show_funcs: bool,
     pub show_folder: bool,
@@ -242,6 +248,8 @@ impl App {
             exit_after_close: false,
             shot: None,
             editor_focused: true,
+            table_focused: false,
+            table_status: None,
             show_map: false,
             show_funcs: false,
             show_folder: false,
@@ -315,6 +323,13 @@ impl App {
                     }
                 }
                 "split" => self.pending.push(Action::CloneToOther),
+                "table" => self.open_sample_table(),
+                "tableedit" => {
+                    self.open_sample_table();
+                    if let Some(t) = self.cur_view_mut().table.as_mut() {
+                        t.editing = Some("+43 664 98765\nnur abends".into());
+                    }
+                }
                 "results" => {
                     self.find.what = "map".into();
                     self.find_all_docs(false);
@@ -357,6 +372,56 @@ impl App {
         let p = self.active_pane;
         self.add_view(p, id);
         id
+    }
+
+    /// Tabellendateien starten in der Tabelle (außer große Dateien und Text ab 50 MB).
+    fn auto_table_view(&mut self) {
+        let d = self.cur_doc();
+        if crate::ui_table::auto_table(d) {
+            let rev = d.rev;
+            self.cur_view_mut().table = Some(Box::new(crate::ui_table::TableState::new(rev)));
+        }
+    }
+
+    /// Text- oder Tabellenansicht des aktuellen Tabs; große Dateien bleiben Text.
+    pub fn toggle_table(&mut self) {
+        let id = self.cur_id();
+        let on = self.cur_view().table.is_some();
+        let Some(d) = self.docs.get_mut(&id) else { return };
+        if d.large {
+            return;
+        }
+        if !on && d.csv.is_none() {
+            let ext = d.path.as_ref().and_then(|p| p.extension()).map(|e| e.to_string_lossy().to_lowercase());
+            d.csv = Some(crate::csv::DocCsv::new(crate::csv::detect(&d.full_text(), ext.as_deref())));
+        }
+        let rev = d.rev;
+        let v = self.cur_view_mut();
+        v.table = if on { None } else { Some(Box::new(crate::ui_table::TableState::new(rev))) };
+        v.want_focus = true;
+    }
+
+    /// Eingebautes Beispiel für Bildschirmfotos: ein kleines Telefonbuch als Tabelle.
+    fn open_sample_table(&mut self) {
+        let text = concat!(
+            "\"FirstName\",\"LastName\",\"Company\",\"Mobile\",\"Business\",\"Email\",\"Notes\"\n",
+            "\"Anna\",\"Berger\",\"Holzbau Berger\",\"+49 170 1234567\",\"+49 89 4410\",\"anna@holzbau.example\",\"\"\n",
+            "\"Max\",\"Huber\",\"Huber & Söhne\",\"+43 664 98765\",\"\",\"max@huber.example\",\"Rückruf\nab 14 Uhr\"\n",
+            "\"Müller, A.\",\"\",\"Praxis am Ring\",\"\",\"+49 30 5550\",\"\",\"\"\n",
+            "\"Lena\",\"Vogt\",\"Vogt Elektro GmbH\",\"+49 151 2223334\",\"+49 711 90\",\"lena.vogt@vogt-elektro.example\",\"Ansprechpartnerin für alle Wartungsverträge im Großraum Stuttgart\"\n",
+            "\"Jonas\",\"Keller\"\n",
+            "\"Sophie\",\"Lang\",\"Café Lang\",\"+41 79 1112233\",\"\",\"sophie@cafe-lang.example\",\"\"\n",
+            "\"Tobias\",\"Roth\",\"Roth IT\",\"+49 160 7654321\",\"+49 40 1200\",\"t.roth@roth-it.example\",\"VIP\"\n",
+        );
+        let id = self.alloc_doc("telefonbuch.csv".into(), text, Enc::Utf8Bom, Eol::Crlf);
+        let d = self.docs.get_mut(&id).expect("eben angelegt");
+        d.csv = Some(crate::csv::DocCsv::new(crate::csv::detect(text, Some("csv"))));
+        let rev = d.rev;
+        self.add_view(0, id);
+        let v = self.cur_view_mut();
+        v.table = Some(Box::new(crate::ui_table::TableState::new(rev)));
+        // Schreibmarke in „Mobile“ von Max: zeigt die aktive Zelle.
+        v.sels = SelSet::single(text.find("+43").map_or(0, |b| text[..b].chars().count()));
     }
 
     fn add_view(&mut self, pane: usize, doc: DocId) {
@@ -555,6 +620,7 @@ impl App {
             }
         }
         self.add_view(pane, id);
+        self.auto_table_view();
         self.add_recent(&full);
         Some(id)
     }
@@ -762,6 +828,9 @@ impl App {
                 let n = self.docs[&id].len();
                 v.sels = SelSet::range(t.anchor.min(n), t.head.min(n));
                 v.top_row = t.top_row;
+                if crate::ui_table::auto_table(&self.docs[&id]) {
+                    v.table = Some(Box::new(crate::ui_table::TableState::new(rev)));
+                }
                 self.panes[pane].tabs.push(v);
             }
             self.panes[pane].active = session.active[pane].min(self.panes[pane].tabs.len().saturating_sub(1));
@@ -1258,6 +1327,7 @@ impl App {
             Action::ToggleAllSymbols => self.toggle_symbol_all(),
             Action::ToggleGuides => self.settings.ed.indent_guides = !self.settings.ed.indent_guides,
             Action::ToggleLineNumbers => self.settings.ed.line_numbers = !self.settings.ed.line_numbers,
+            Action::ToggleTable => self.toggle_table(),
             Action::ZoomIn => self.change_font_size(self.settings.font_size + 1.0),
             Action::ZoomOut => self.change_font_size(self.settings.font_size - 1.0),
             Action::ZoomReset => self.change_font_size(16.0),

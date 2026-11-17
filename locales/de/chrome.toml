@@ -175,3 +175,11 @@ ins_tip = "Einfügen ({key})"
 ovr_tip = "Überschreiben ({key})"
 eol_tip = "Zeilenende: {eol}"
 lang_tip = "Sprache für die Farben"
+
+# Tabellenansicht für CSV-Dateien (src/ui_table.rs)
+[table]
+view_text = "Text"
+view_table = "Tabelle"
+switch_tip = "Dieses Tab als Text oder als Tabelle zeigen"
+menu_toggle = "Als Tabelle anzeigen"
+paste_cut = "Einfügen: überzählige Spalten wurden abgeschnitten."

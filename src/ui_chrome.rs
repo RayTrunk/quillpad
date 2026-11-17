@@ -201,6 +201,9 @@ macro_rules! sc {
     };
 }
 
+/// Höhe der Leiste mit dem Umschalter Text | Tabelle.
+const VIEW_STRIP_H: f32 = 26.0;
+
 pub fn shortcuts() -> Vec<Shortcut> {
     use Action as A;
     vec![
@@ -361,6 +364,7 @@ impl App {
     pub fn handle_shortcuts(&mut self, ctx: &Context) {
         // Nur der Rest der Tasten bleibt für das Schreibfeld übrig.
         let editor_focus = self.editor_focused;
+        let table_focus = self.table_focused;
         let table = shortcuts();
         ctx.input_mut(|i| {
             let mut fired = Vec::new();
@@ -372,6 +376,7 @@ impl App {
                             && s.shift == modifiers.shift
                             && s.alt == modifiers.alt
                             && (!s.editor_only || editor_focus)
+                            && !(table_focus && crate::ui_table::claims_key(*key, *modifiers))
                         {
                             fired.push((s.action)());
                             return false;
@@ -434,10 +439,28 @@ impl App {
     fn draw_pane(&mut self, ui: &mut Ui, pane: usize, rect: Rect) {
         let tab_h = 30.0;
         let tab_rect = Rect::from_min_size(rect.min, vec2(rect.width(), tab_h));
-        let edit_outer = Rect::from_min_max(pos2(rect.left(), rect.top() + tab_h), rect.max);
+        let mut edit_outer = Rect::from_min_max(pos2(rect.left(), rect.top() + tab_h), rect.max);
         self.tab_bar(ui, pane, tab_rect);
         if self.panes[pane].tabs.is_empty() {
             return;
+        }
+        // Umschalter Text | Tabelle für Dokumente mit CSV-Dialekt
+        let (has_csv, is_table) = {
+            let p = &self.panes[pane];
+            let v = &p.tabs[p.active.min(p.tabs.len() - 1)];
+            let d = self.docs.get(&v.doc);
+            (d.is_some_and(|d| d.csv.is_some() && !d.large), v.table.is_some())
+        };
+        if has_csv {
+            let strip = Rect::from_min_size(edit_outer.min, vec2(edit_outer.width(), VIEW_STRIP_H));
+            edit_outer.min.y += VIEW_STRIP_H;
+            if let Some(table) = self.view_switch(ui, pane, strip, is_table) {
+                if table != is_table {
+                    // Sofort und für genau diesen Bereich, nicht für den, der gerade den Fokus hat.
+                    self.active_pane = pane;
+                    self.toggle_table();
+                }
+            }
         }
         let theme_id = self.settings.theme;
         let c = chrome(theme_id);
@@ -457,12 +480,33 @@ impl App {
         let Some(metrics) = self.metrics.as_mut() else { return };
         doc.hl.set_theme(theme_id);
         let mut child = ui.new_child(UiBuilder::new().max_rect(edit_rect).id_salt(("pane", pane)));
+        if view.table.is_some() && (doc.csv.is_none() || doc.large) {
+            view.table = None;
+        }
+        if view.table.is_some() {
+            let out = crate::ui_table::show(&mut child, doc, view, &pal, metrics, theme_id.retro());
+            if out.focused {
+                self.active_pane = pane;
+            }
+            if pane == self.active_pane {
+                self.editor_focused = false;
+                self.table_focused = out.focused;
+            }
+            if let Some(clip) = out.clipboard {
+                ui.ctx().copy_text(clip);
+            }
+            if out.status.is_some() {
+                self.table_status = out.status;
+            }
+            return;
+        }
         let (out, resp) = editor::show(&mut child, doc, view, &self.settings.ed, metrics, &pal);
         if out.focused {
             self.active_pane = pane;
         }
         if pane == self.active_pane {
             self.editor_focused = out.focused;
+            self.table_focused = false;
         }
         if let Some(clip) = out.clipboard {
             ui.ctx().copy_text(clip);
@@ -500,6 +544,54 @@ impl App {
             mi(ui, pending, &crate::t!("menu.lower"), "Ctrl+U", Action::Cmd(Cmd::Case(CaseKind::Lower)));
             mi(ui, pending, &crate::t!("menu.toggle_comment"), "Ctrl+Q", Action::Cmd(Cmd::Comment(None)));
         });
+    }
+
+    /// Umschalter „Text | Tabelle“ über der Ansicht. Liefert die angeklickte Wahl (true = Tabelle).
+    fn view_switch(&mut self, ui: &mut Ui, pane: usize, rect: Rect, is_table: bool) -> Option<bool> {
+        let c = chrome(self.settings.theme);
+        let retro = self.settings.theme.retro();
+        let font = FontId::proportional(if retro { 13.0 } else { 13.5 });
+        let painter = ui.painter_at(rect);
+        painter.rect_filled(rect, 0.0, c.window);
+        let labels = [crate::t!("table.view_text"), crate::t!("table.view_table")];
+        let widths: Vec<f32> = labels
+            .iter()
+            .map(|l| ui.fonts(|f| f.layout_no_wrap(l.clone(), font.clone(), c.text).size().x) + 22.0)
+            .collect();
+        let h = rect.height() - 6.0;
+        let mut x = rect.left() + 2.0;
+        let y = rect.top() + 2.0;
+        let mut picked = None;
+        let whole = Rect::from_min_size(pos2(x, y), vec2(widths.iter().sum(), h));
+        if !retro {
+            painter.rect_filled(whole, 3.0, c.tab_inactive);
+        }
+        for (i, label) in labels.iter().enumerate() {
+            let on = (i == 1) == is_table;
+            let r = Rect::from_min_size(pos2(x, y), vec2(widths[i], h));
+            let resp = ui
+                .interact(r, ui.id().with(("view_switch", pane, i)), Sense::click())
+                .on_hover_text(crate::t!("table.switch_tip"));
+            if resp.clicked() {
+                picked = Some(i == 1);
+            }
+            if retro {
+                // Klassisch: zwei Knöpfe, der gewählte eingedrückt.
+                if on {
+                    painter.rect_filled(r, 0.0, theme::W98_LIGHT);
+                }
+                theme::bevel_thin(&painter, r, !on);
+            } else if on {
+                painter.rect_filled(r.shrink(2.0), 2.0, c.tab_active);
+                painter.rect_stroke(r.shrink(2.0), 2.0, Stroke::new(1.0_f32, c.line), StrokeKind::Inside);
+            } else if resp.hovered() {
+                painter.rect_filled(r.shrink(2.0), 2.0, c.hover);
+            }
+            let tc = if on || retro { c.text } else { c.text_dim };
+            painter.text(r.center(), Align2::CENTER_CENTER, label, font.clone(), tc);
+            x += widths[i];
+        }
+        picked
     }
 
     fn tab_bar(&mut self, ui: &mut Ui, pane: usize, rect: Rect) {
@@ -788,6 +880,7 @@ impl App {
             .collect();
         let (show_map, show_funcs, show_folder, sync_v, sync_h, on_top, fullscreen, cur_theme) =
             (self.show_map, self.show_funcs, self.show_folder, self.sync_v, self.sync_h, self.on_top, self.fullscreen, self.settings.theme);
+        let (cur_table, can_table) = (self.cur_view().table.is_some(), !self.cur_doc().large);
         let p = &mut self.pending;
 
         ui.menu_button(crate::t!("menu.file"), |ui| {
@@ -906,6 +999,12 @@ impl App {
             });
             check(ui, p, &crate::t!("menu.fullscreen"), fullscreen, "F11", Action::ToggleFullscreen);
             check(ui, p, &crate::t!("menu.on_top"), on_top, "", Action::ToggleOnTop);
+            ui.separator();
+            let b = Button::new(crate::t!("table.menu_toggle")).selected(cur_table);
+            if ui.add_enabled(can_table, b).clicked() {
+                p.push(Action::ToggleTable);
+                ui.close_menu();
+            }
             ui.separator();
             check(ui, p, &crate::t!("menu.wrap"), o.wrap, "", Action::ToggleWrap);
             check(ui, p, &crate::t!("menu.line_numbers"), o.line_numbers, "", Action::ToggleLineNumbers);

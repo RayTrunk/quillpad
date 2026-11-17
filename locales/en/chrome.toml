@@ -175,3 +175,11 @@ ins_tip = "Insert ({key})"
 ovr_tip = "Overwrite ({key})"
 eol_tip = "Line ending: {eol}"
 lang_tip = "Language for syntax highlighting"
+
+# Table view for CSV files (src/ui_table.rs)
+[table]
+view_text = "Text"
+view_table = "Table"
+switch_tip = "Show this tab as text or as a table"
+menu_toggle = "Show as Table"
+paste_cut = "Paste: extra columns were cut off."
