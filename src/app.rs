@@ -97,6 +97,8 @@ pub enum Action {
     ToggleTable,
     /// Befehl der Tabellenansicht (Menü „Tabelle“, Kontextmenü, Kürzel).
     Table(crate::ui_table::TableCmd),
+    /// Trennzeichen oder Kopfzeile eines CSV-Dokuments umstellen (Statusleiste); der Text bleibt.
+    CsvDialect(crate::csv::Dialect),
     ZoomIn,
     ZoomOut,
     ZoomReset,
@@ -188,8 +190,9 @@ pub struct App {
     pub editor_focused: bool,
     /// Eine Tabellenansicht im aktiven Bereich hat den Tastaturfokus.
     pub table_focused: bool,
-    /// Letzter Hinweis der Tabelle (z. B. abgeschnittenes Einfügen) für die Statusleiste.
-    pub table_status: Option<String>,
+    /// Letzter Hinweis der Tabelle (z. B. abgeschnittenes Einfügen) für die Statusleiste,
+    /// mit dem Zeitpunkt; er verschwindet nach kurzer Zeit.
+    pub table_status: Option<(String, Instant)>,
     pub show_map: bool,
     pub show_funcs: bool,
     pub show_folder: bool,
@@ -326,6 +329,11 @@ impl App {
                 }
                 "split" => self.pending.push(Action::CloneToOther),
                 "table" => self.open_sample_table(),
+                // Dieselbe Datei in der Textansicht: farbige Spalten, „Spalte n: Name“.
+                "tabletext" => {
+                    self.open_sample_table();
+                    self.cur_view_mut().table = None;
+                }
                 "tableedit" => {
                     self.open_sample_table();
                     if let Some(t) = self.cur_view_mut().table.as_mut() {
@@ -421,8 +429,8 @@ impl App {
         let v = &mut p.tabs[i];
         let Some(d) = self.docs.get_mut(&v.doc) else { return };
         let out = crate::ui_table::run_cmd(d, v, c);
-        if out.status.is_some() {
-            self.table_status = out.status;
+        if let Some(s) = out.status {
+            self.table_status = Some((s, Instant::now()));
         }
     }
 
@@ -1397,6 +1405,13 @@ impl App {
             Action::ToggleLineNumbers => self.settings.ed.line_numbers = !self.settings.ed.line_numbers,
             Action::ToggleTable => self.toggle_table(),
             Action::Table(c) => self.table_cmd(c),
+            Action::CsvDialect(dl) => {
+                if let Some(c) = self.cur_doc_mut().csv.as_mut() {
+                    if c.dialect != dl {
+                        c.set_dialect(dl);
+                    }
+                }
+            }
             Action::ZoomIn => self.change_font_size(self.settings.font_size + 1.0),
             Action::ZoomOut => self.change_font_size(self.settings.font_size - 1.0),
             Action::ZoomReset => self.change_font_size(16.0),

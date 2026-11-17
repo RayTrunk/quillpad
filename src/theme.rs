@@ -137,6 +137,49 @@ pub fn syntax(t: ThemeId) -> Syntax {
     }
 }
 
+/// Spaltenfarben für CSV in der Textansicht: sechs je Design, zyklisch verwendet,
+/// jede mit Kontrast ≥ 4,5 zum Hintergrund des Schreibfelds.
+pub fn csv_columns(t: ThemeId) -> &'static [Color32] {
+    const fn six(c: [u32; 6]) -> [Color32; 6] {
+        [rgb(c[0]), rgb(c[1]), rgb(c[2]), rgb(c[3]), rgb(c[4]), rgb(c[5])]
+    }
+    static LIGHT: [Color32; 6] = six([0x1F5FAF, 0xA0461E, 0x1E7A3C, 0x8A3FA8, 0x7F6200, 0x0F7480]);
+    // Klassisch: dunkle Töne in der Art der 16-Farben-Palette.
+    static WIN98: [Color32; 6] = six([0x000080, 0x800000, 0x007000, 0x800080, 0x006F6F, 0x7A4A00]);
+    static DARK: [Color32; 6] = six([0x6FB0F0, 0xE8A060, 0x8CCB7A, 0xD09CF0, 0xE6D070, 0x6CCFC8]);
+    static SOL_LIGHT: [Color32; 6] = six([0x1F6FA8, 0xA8401A, 0x5A6A00, 0xA02D6C, 0x0E7068, 0x765600]);
+    static SOL_DARK: [Color32; 6] = six([0x6CB0E8, 0xE08A50, 0xA8BC3A, 0xE07AB0, 0x4CC8BC, 0xD8B040]);
+    static NORD: [Color32; 6] = six([0x88C0D0, 0xE0A890, 0xA3BE8C, 0xD0ACCC, 0xEBCB8B, 0xA8BEE8]);
+    static MONOKAI: [Color32; 6] = six([0x66D9EF, 0xFD971F, 0xA6E22E, 0xB89AFF, 0xFF7AA8, 0xE6DB74]);
+    static SEPIA: [Color32; 6] = six([0x2F5D7C, 0x8C3F22, 0x3F6A22, 0x6B4C9A, 0x6E520C, 0x1F6B5A]);
+    static HIGH: [Color32; 6] = six([0x80C0FF, 0xFFB000, 0x00FF80, 0xFF80FF, 0xFFFF00, 0x00FFFF]);
+    match t {
+        ThemeId::Light => &LIGHT,
+        ThemeId::Win98 => &WIN98,
+        ThemeId::Dark => &DARK,
+        ThemeId::SolarizedLight => &SOL_LIGHT,
+        ThemeId::SolarizedDark => &SOL_DARK,
+        ThemeId::Nord => &NORD,
+        ThemeId::Monokai => &MONOKAI,
+        ThemeId::Sepia => &SEPIA,
+        ThemeId::HighContrast => &HIGH,
+    }
+}
+
+/// Gedämpfte, aber lesbare Farbe für Trennzeichen in CSV.
+pub fn csv_delim(t: ThemeId) -> Color32 {
+    rgb(match t {
+        ThemeId::Light | ThemeId::Win98 => 0x6E6E6E,
+        ThemeId::Dark => 0x9A9A9A,
+        ThemeId::SolarizedLight => 0x5F6C70,
+        ThemeId::SolarizedDark => 0x8A9A9C,
+        ThemeId::Nord => 0xA0A8B8,
+        ThemeId::Monokai => 0xA09E90,
+        ThemeId::Sepia => 0x6A5D4A,
+        ThemeId::HighContrast => 0xB0B0B0,
+    })
+}
+
 /// Farben des Schreibfelds.
 pub fn palette(t: ThemeId) -> Palette {
     let s = syntax(t);
@@ -281,6 +324,25 @@ mod tests {
             let diff = lum(s.fg).abs_diff(lum(s.bg));
             assert!(diff > 1000, "{t:?}: Text hebt sich nicht vom Hintergrund ab");
             assert_eq!(t.is_dark(), lum(s.bg) < lum(s.fg), "{t:?}: hell/dunkel passt nicht");
+        }
+    }
+
+    #[test]
+    fn csv_palette_contrast() {
+        let hex = |c: Color32| (u32::from(c.r()) << 16) | (u32::from(c.g()) << 8) | u32::from(c.b());
+        for t in ThemeId::ALL {
+            let bg = hex(palette(t).bg);
+            let cols = csv_columns(t);
+            assert_eq!(cols.len(), 6, "{t:?}");
+            for (i, c) in cols.iter().enumerate() {
+                let k = contrast(hex(*c), bg);
+                assert!(k >= 4.5, "{t:?} Spalte {i}: {:06X} hat nur {k:.2}", hex(*c));
+            }
+            for (i, a) in cols.iter().enumerate() {
+                assert!(cols[i + 1..].iter().all(|b| b != a), "{t:?}: Farbe {i} doppelt");
+            }
+            let d = hex(csv_delim(t));
+            assert!(contrast(d, bg) >= 4.5, "{t:?}: Trennzeichen {d:06X} schlecht lesbar");
         }
     }
 }

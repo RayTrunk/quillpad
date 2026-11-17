@@ -511,6 +511,8 @@ impl App {
         let Some(doc) = self.docs.get_mut(&view.doc) else { return };
         let Some(metrics) = self.metrics.as_mut() else { return };
         doc.hl.set_theme(theme_id);
+        // Einzige Stelle, an der die Färbung dem CSV-Dialekt folgt (billig, jedes Bild).
+        doc.hl.set_csv(doc.csv.as_ref().map(|c| c.dialect.delim));
         let mut child = ui.new_child(UiBuilder::new().max_rect(edit_rect).id_salt(("pane", pane)));
         if view.table.is_some() && (doc.csv.is_none() || doc.large) {
             view.table = None;
@@ -527,8 +529,8 @@ impl App {
             if let Some(clip) = out.clipboard {
                 ui.ctx().copy_text(clip);
             }
-            if out.status.is_some() {
-                self.table_status = out.status;
+            if let Some(s) = out.status {
+                self.table_status = Some((s, std::time::Instant::now()));
             }
             if !out.cmds.is_empty() {
                 self.active_pane = pane;
@@ -1320,6 +1322,7 @@ impl App {
         if !retro {
             ui.painter().line_segment([pos2(rect.left(), rect.top()), pos2(rect.right(), rect.top())], Stroke::new(1.0, c.line));
         }
+        let csv = self.csv_status();
         let (d, v) = (self.cur_doc(), self.cur_view());
         let main = v.sels.main();
         let line = d.text.char_to_line(main.head);
@@ -1330,6 +1333,30 @@ impl App {
             pos.push_str("   ");
             pos.push_str(&crate::t!("status.selected", n = group(sel_chars)));
         }
+        // CSV: in der Tabelle ersetzt „Zeile n von m · Spalte“ die Textposition,
+        // in der Textansicht kommt die Spalte als eigenes Feld dazu.
+        let mut col_field = None;
+        if let Some(s) = &csv {
+            let col_text = s.col.as_ref().map(|(n, name)| match name {
+                Some(name) => crate::t!("table.status_col", n = group(n + 1), name = name),
+                None => crate::t!("table.status_col_plain", n = group(n + 1)),
+            });
+            if let Some((row, rows)) = s.row {
+                pos = crate::t!("table.status_row", n = group(row), m = group(rows));
+                if let Some(ct) = col_text {
+                    pos = format!("{pos} · {ct}");
+                }
+            } else {
+                col_field = col_text;
+            }
+        }
+        let hint = csv.as_ref().and_then(|s| s.unclosed).map(|n| crate::t!("table.unclosed", n = group(n))).or_else(|| {
+            const SHOW: std::time::Duration = std::time::Duration::from_secs(8);
+            let (s, at) = self.table_status.as_ref()?;
+            let left = SHOW.checked_sub(at.elapsed())?;
+            ui.ctx().request_repaint_after(left);
+            Some(s.clone())
+        });
         let cur_lang = d.hl.language.clone();
         let lang = cur_lang.clone().unwrap_or_else(|| crate::t!("common.plain_text"));
         let counts = crate::t!("status.counts", chars = group(d.len()), lines = group(d.lines()));
@@ -1365,6 +1392,38 @@ impl App {
         let r = ui.label(txt(&pos)).rect;
         frame(ui, r);
         let pending = &mut self.pending;
+        if let Some(s) = &csv {
+            if let Some(cf) = &col_field {
+                dot(ui);
+                let r = ui.label(txt(cf)).rect;
+                frame(ui, r);
+            }
+            dot(ui);
+            let dl = s.dialect;
+            let r = ui
+                .menu_button(txt(&delim_name(dl.delim)), |ui| {
+                    ui.set_min_width(170.0);
+                    for c in crate::csv::DELIMS {
+                        check(ui, pending, &delim_name(c), c == dl.delim, "", Action::CsvDialect(crate::csv::Dialect { delim: c, ..dl }));
+                    }
+                })
+                .response
+                .on_hover_text(crate::t!("table.delim_tip"))
+                .rect;
+            frame(ui, r);
+            dot(ui);
+            let label = if dl.header { crate::t!("table.header_on") } else { crate::t!("table.header_off") };
+            let resp = ui.button(txt(&label)).on_hover_text(crate::t!("table.header_tip"));
+            if resp.clicked() {
+                pending.push(Action::CsvDialect(crate::csv::Dialect { header: !dl.header, ..dl }));
+            }
+            frame(ui, resp.rect);
+        }
+        if let Some(h) = &hint {
+            dot(ui);
+            let r = ui.label(txt(h)).rect;
+            frame(ui, r);
+        }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             // Reine Textfelder bekommen denselben Innenabstand wie die Knöpfe daneben.
             ui.add_space(4.0);
@@ -1409,6 +1468,44 @@ impl App {
                 .rect;
             frame(ui, r);
         });
+    }
+}
+
+/// CSV-Angaben für die Statusleiste des aktiven Tabs.
+struct CsvBar {
+    dialect: crate::csv::Dialect,
+    /// Nur in der Tabellenansicht: (Datensatz ab 1, Anzahl Datensätze).
+    row: Option<(usize, usize)>,
+    /// Spalte ab 0 und ihr Name aus der Kopfzeile.
+    col: Option<(usize, Option<String>)>,
+    /// Textzeile eines nicht geschlossenen Anführungszeichens (nur Tabelle).
+    unclosed: Option<usize>,
+}
+
+impl App {
+    fn csv_status(&mut self) -> Option<CsvBar> {
+        let p = &mut self.panes[self.active_pane];
+        let v = &p.tabs[p.active.min(p.tabs.len().checked_sub(1)?)];
+        let d = self.docs.get_mut(&v.doc)?;
+        let dialect = d.csv.as_ref()?.dialect;
+        if v.table.is_some() {
+            let s = crate::ui_table::status_info(d, v)?;
+            Some(CsvBar { dialect, row: Some((s.row, s.rows)), col: Some((s.col, s.name)), unclosed: s.unclosed })
+        } else {
+            let col = crate::ui_table::text_column(d, v.sels.main().head);
+            Some(CsvBar { dialect, row: None, col, unclosed: None })
+        }
+    }
+}
+
+/// Anzeigename eines Trennzeichens.
+fn delim_name(c: char) -> String {
+    match c {
+        ',' => crate::t!("table.delim_comma"),
+        ';' => crate::t!("table.delim_semicolon"),
+        '\t' => crate::t!("table.delim_tab"),
+        '|' => crate::t!("table.delim_pipe"),
+        other => other.to_string(),
     }
 }
 

@@ -1697,3 +1697,88 @@ fn table_menu_only_with_table_and_tablefilter_state_draws() {
     assert!(st.rows.rows.len() < 7);
     assert!(!r.app.cur_doc().is_modified());
 }
+
+#[test]
+fn csv_spans_carry_quote_state() {
+    let cols = crate::theme::csv_columns(crate::theme::ThemeId::Light);
+    let dim = crate::theme::csv_delim(crate::theme::ThemeId::Light);
+    let l1: Vec<char> = "a,\"b\n".chars().collect();
+    let (s1, col, q) = crate::highlight::csv_line_spans(&l1, 0, false, ',', cols, dim);
+    assert_eq!((col, q), (1, true), "Zeile 1 endet im offenen Feld der zweiten Spalte");
+    assert_eq!(s1.iter().map(|s| s.chars).sum::<u32>(), 5, "Abschnitte decken die Zeile ab");
+    assert_eq!(s1[0].color, cols[0]);
+    assert_eq!(s1[1].color, dim, "Trennzeichen gedämpft");
+    assert_eq!(s1[2].color, cols[1]);
+    let l2: Vec<char> = "c,d\",e\n".chars().collect();
+    let (s2, col, q) = crate::highlight::csv_line_spans(&l2, col, q, ',', cols, dim);
+    assert_eq!(s2[0].color, cols[1], "Zeile 2 setzt das Feld der zweiten Spalte fort");
+    assert_eq!(s2[0].chars, 4, "Komma im Anführungszeichen ist kein Trennzeichen");
+    assert_eq!(s2[1].color, dim);
+    assert_eq!(s2[2].color, cols[2]);
+    assert_eq!((col, q), (2, false));
+    // Spaltenfarben wiederholen sich nach der Palette.
+    let l3: Vec<char> = "0;1;2;3;4;5;6".chars().collect();
+    let (s3, col, _) = crate::highlight::csv_line_spans(&l3, 0, false, ';', cols, dim);
+    assert_eq!(col, 6);
+    assert_eq!(s3.last().unwrap().color, cols[0]);
+    // Das Dokument färbt über Zeilen hinweg und nach Wechsel des Trennzeichens neu.
+    let text = ropey::Rope::from_str("a,\"b\nc,d\",e\nf;g\n");
+    let mut hl = crate::highlight::DocHl::new(None);
+    hl.set_csv(Some(','));
+    assert!(hl.ensure(&text, 0, 3, std::time::Duration::from_secs(5)));
+    assert_eq!(hl.spans(1).unwrap()[0].color, cols[1]);
+    assert_eq!(hl.csv_col_at(&text, 7), Some(1), "„d“ steht in Spalte 2");
+    assert_eq!(hl.csv_col_at(&text, 10), Some(2));
+    assert_eq!(hl.spans(2).unwrap().len(), 1, "ohne Komma eine Spalte");
+    hl.set_csv(Some(';'));
+    assert!(hl.spans(2).is_none(), "neues Trennzeichen färbt neu");
+    assert!(hl.ensure(&text, 0, 3, std::time::Duration::from_secs(5)));
+    assert_eq!(hl.spans(2).unwrap().len(), 3);
+}
+
+#[test]
+fn switching_delimiter_reparses() {
+    let mut r = Rig::new();
+    let src = "a;b;c\n1;2,5;3\n4;5;6\n";
+    let dir = open_csv(&mut r, "tbldelim", "t.csv", src);
+    let info = |r: &mut Rig| {
+        let p = &mut r.app.panes[r.app.active_pane];
+        let v = &mut p.tabs[p.active];
+        let d = r.app.docs.get_mut(&v.doc).unwrap();
+        crate::ui_table::status_info(d, v).expect("CSV-Dokument")
+    };
+    let i = info(&mut r);
+    assert_eq!((i.ncols, i.rows, i.row), (3, 2, 1));
+    assert_eq!(i.name.as_deref(), Some("a"));
+    let d = r.app.cur_doc().csv.as_ref().unwrap().dialect;
+    assert_eq!(d.delim, ';');
+    r.act(Action::CsvDialect(crate::csv::Dialect { delim: ',', ..d }));
+    let i = info(&mut r);
+    assert_eq!(i.ncols, 2, "mit Komma andere Spaltenzahl");
+    assert_eq!(r.text(), src, "Text unverändert");
+    assert!(!r.app.cur_doc().is_modified());
+    assert_eq!(r.app.cur_doc().hl.csv_delim(), Some(','), "Textfarben folgen dem Trennzeichen");
+    r.act(Action::CsvDialect(crate::csv::Dialect { delim: ',', header: false }));
+    let i = info(&mut r);
+    assert_eq!(i.rows, 3, "ohne Kopfzeile zählt jede Zeile");
+    assert_eq!(i.name, None);
+    assert!(r.app.cur_doc().csv.as_ref().unwrap().manual);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn text_view_status_names_column_and_unclosed_quote() {
+    let mut r = Rig::new();
+    let dir = open_csv(&mut r, "tbltxtcol", "t.csv", "Name,Mobile\nAnna,\"+49\nBerta,1\n");
+    r.act(Action::ToggleTable);
+    assert!(r.app.cur_view().table.is_none());
+    r.app.cur_view_mut().sels = SelSet::single(18);
+    r.frames(2);
+    let (pos, d) = (r.app.cur_view().sels.main().head, r.app.cur_doc());
+    assert_eq!(crate::ui_table::text_column(d, pos), Some((1, Some("Mobile".to_string()))));
+    let p = &mut r.app.panes[r.app.active_pane];
+    let v = &mut p.tabs[p.active];
+    let d = r.app.docs.get_mut(&v.doc).unwrap();
+    assert_eq!(crate::ui_table::status_info(d, v).unwrap().unclosed, Some(2), "Zeile 2 im Text, ab 1 gezählt");
+    std::fs::remove_dir_all(&dir).unwrap();
+}

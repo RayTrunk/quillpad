@@ -228,6 +228,12 @@ pub struct DocHl {
     checkpoints: Vec<(ParseState, HighlightState)>,
     cur: Option<(usize, ParseState, HighlightState)>,
     cache: HashMap<usize, Arc<Vec<Span>>>,
+    /// Trennzeichen, wenn das Dokument als CSV gefärbt wird (statt nach Sprache).
+    csv: Option<char>,
+    /// CSV-Zustand (Spalte, im Anführungszeichen) am Anfang jeder CHECKPOINT-ten Zeile.
+    csv_points: Vec<(usize, bool)>,
+    /// Weiterarbeiten ab (Zeile, Spalte, im Anführungszeichen).
+    csv_cur: Option<(usize, usize, bool)>,
 }
 
 impl DocHl {
@@ -240,7 +246,51 @@ impl DocHl {
             checkpoints: Vec::new(),
             cur: None,
             cache: HashMap::new(),
+            csv: None,
+            csv_points: Vec::new(),
+            csv_cur: None,
         }
+    }
+
+    /// CSV-Färbung mit diesem Trennzeichen; None = wieder nach Sprache.
+    pub fn set_csv(&mut self, delim: Option<char>) {
+        if self.csv != delim {
+            self.csv = delim;
+            self.reset();
+        }
+    }
+
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub fn csv_delim(&self) -> Option<char> {
+        self.csv
+    }
+
+    /// CSV-Zustand am Anfang von `line`, soweit schon berechnet.
+    fn csv_state_at(&self, text: &Rope, line: usize, delim: char) -> Option<(usize, bool)> {
+        let idx = line / CHECKPOINT;
+        let (mut col, mut q) = *self.csv_points.get(idx)?;
+        let mut chars = Vec::new();
+        for l in idx * CHECKPOINT..line {
+            chars.clear();
+            chars.extend(text.line(l).chars());
+            (col, q) = csv_scan(&chars, col, q, delim, |_, _| {});
+            if !q {
+                col = 0;
+            }
+        }
+        Some((col, q))
+    }
+
+    /// Spalte (ab 0) an Zeichenposition `pos` in der CSV-Färbung; None ohne CSV oder
+    /// solange die Färbung dort noch nicht angekommen ist.
+    pub fn csv_col_at(&self, text: &Rope, pos: usize) -> Option<usize> {
+        let delim = self.csv?;
+        let pos = pos.min(text.len_chars());
+        let line = text.char_to_line(pos);
+        let (col, q) = self.csv_state_at(text, line, delim)?;
+        let start = text.line_to_char(line);
+        let chars: Vec<char> = text.slice(start..pos).chars().collect();
+        Some(csv_scan(&chars, col, q, delim, |_, _| {}).0)
     }
 
     pub fn set_language(&mut self, language: Option<String>) {
@@ -259,15 +309,21 @@ impl DocHl {
         self.checkpoints.clear();
         self.cur = None;
         self.cache.clear();
+        self.csv_points.clear();
+        self.csv_cur = None;
     }
 
     pub fn invalidate_from(&mut self, line: usize) {
-        if self.language.is_none() {
+        if self.language.is_none() && self.csv.is_none() {
             return;
         }
         self.checkpoints.truncate(line / CHECKPOINT + 1);
         if self.cur.as_ref().is_some_and(|c| c.0 > line) {
             self.cur = None;
+        }
+        self.csv_points.truncate(line / CHECKPOINT + 1);
+        if self.csv_cur.is_some_and(|c| c.0 > line) {
+            self.csv_cur = None;
         }
         self.cache.retain(|l, _| *l < line);
     }
@@ -278,6 +334,9 @@ impl DocHl {
 
     /// Arbeitet auf den sichtbaren Bereich hin. false = noch nicht fertig, später weiter.
     pub fn ensure(&mut self, text: &Rope, first: usize, last: usize, budget: Duration) -> bool {
+        if let Some(delim) = self.csv {
+            return self.ensure_csv(text, first, last, budget, delim);
+        }
         let Some(lang) = self.language.clone() else {
             return true;
         };
@@ -326,6 +385,107 @@ impl DocHl {
         self.cur = Some((line, ps, hs));
         done
     }
+
+    /// Wie `ensure`, aber Spaltenfarben für CSV; der Zustand (Spalte, offenes
+    /// Anführungszeichen) wandert über die Zeilen wie der Parser-Zustand bei Sprachen.
+    fn ensure_csv(&mut self, text: &Rope, first: usize, last: usize, budget: Duration, delim: char) -> bool {
+        let last = last.min(text.len_lines());
+        let Some(need) = (first..last).find(|l| !self.cache.contains_key(l)) else {
+            return true;
+        };
+        let (cols, dim) = (crate::theme::csv_columns(self.theme), crate::theme::csv_delim(self.theme));
+        if self.csv_points.is_empty() {
+            self.csv_points.push((0, false));
+        }
+        if self.csv_cur.is_none_or(|c| c.0 > need) {
+            let idx = (need / CHECKPOINT).min(self.csv_points.len() - 1);
+            let (col, q) = self.csv_points[idx];
+            self.csv_cur = Some((idx * CHECKPOINT, col, q));
+        }
+        let (mut line, mut col, mut q) = self.csv_cur.take().expect("gesetzt");
+        let t0 = Instant::now();
+        if self.cache.len() > 20_000 {
+            self.cache.clear();
+        }
+        let mut done = true;
+        let mut chars = Vec::new();
+        while line < last {
+            if line == self.csv_points.len() * CHECKPOINT {
+                self.csv_points.push((col, q));
+            }
+            chars.clear();
+            chars.extend(text.line(line).chars());
+            let (spans, c, open) = csv_line_spans(&chars, col, q, delim, cols, dim);
+            (col, q) = if open { (c, true) } else { (0, false) };
+            if line >= first {
+                self.cache.insert(line, Arc::new(spans));
+            }
+            line += 1;
+            if t0.elapsed() > budget && line < last {
+                done = false;
+                break;
+            }
+        }
+        self.csv_cur = Some((line, col, q));
+        done
+    }
+}
+
+/// Geht eine CSV-Zeile durch und meldet jedes Zeichen mit (Spalte, ist Trennzeichen).
+/// Liefert Spalte und offenes Anführungszeichen am Ende. Ein Anführungszeichen öffnet
+/// nur am Feldanfang, zwei hintereinander darin stehen für eins – wie im Parser.
+fn csv_scan(line: &[char], mut col: usize, mut in_quote: bool, delim: char, mut each: impl FnMut(usize, bool)) -> (usize, bool) {
+    let mut at_start = !in_quote;
+    let mut i = 0;
+    while i < line.len() {
+        let c = line[i];
+        if in_quote {
+            if c == '"' {
+                if line.get(i + 1) == Some(&'"') {
+                    each(col, false);
+                    i += 1;
+                } else {
+                    in_quote = false;
+                }
+            }
+            each(col, false);
+            at_start = false;
+        } else if c == delim {
+            each(col, true);
+            col += 1;
+            at_start = true;
+        } else {
+            if c == '"' && at_start {
+                in_quote = true;
+            }
+            each(col, false);
+            at_start = false;
+        }
+        i += 1;
+    }
+    (col, in_quote)
+}
+
+/// Abschnitte einer CSV-Zeile: jede Spalte in ihrer Farbe aus `cols` (zyklisch), Trennzeichen
+/// in `dim`. `start_col`/`in_quote`: Zustand am Zeilenanfang (aus der Zeile davor).
+/// Liefert dazu die Spalte am Zeilenende und ob dort ein Anführungszeichen offen ist.
+pub fn csv_line_spans(
+    line: &[char],
+    start_col: usize,
+    in_quote: bool,
+    delim: char,
+    cols: &[Color32],
+    dim: Color32,
+) -> (Vec<Span>, usize, bool) {
+    let mut spans: Vec<Span> = Vec::new();
+    let (col, q) = csv_scan(line, start_col, in_quote, delim, |col, is_delim| {
+        let color = if is_delim || cols.is_empty() { dim } else { cols[col % cols.len()] };
+        match spans.last_mut() {
+            Some(l) if l.color == color => l.chars += 1,
+            _ => spans.push(Span { chars: 1, color, bold: false }),
+        }
+    });
+    (spans, col, q)
 }
 
 /// Eine Zeile parsen und einfärben. Der Zustand wandert zur nächsten Zeile weiter.
