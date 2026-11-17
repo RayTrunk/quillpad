@@ -383,8 +383,20 @@ impl App {
         }
     }
 
+    /// Offene Zellbearbeitungen aller Tabellen in den Text übernehmen.
+    pub fn commit_table_edits(&mut self) {
+        for p in self.panes.iter_mut() {
+            for v in p.tabs.iter_mut().filter(|v| v.table.as_ref().is_some_and(|t| t.editing.is_some())) {
+                if let Some(d) = self.docs.get_mut(&v.doc) {
+                    crate::ui_table::commit_edit(d, v);
+                }
+            }
+        }
+    }
+
     /// Text- oder Tabellenansicht des aktuellen Tabs; große Dateien bleiben Text.
     pub fn toggle_table(&mut self) {
+        self.commit_table_edits();
         let id = self.cur_id();
         let on = self.cur_view().table.is_some();
         let Some(d) = self.docs.get_mut(&id) else { return };
@@ -1104,6 +1116,8 @@ impl App {
 
     pub fn run(&mut self, ctx: &Context, a: Action) {
         self.sync_views();
+        // Speichern, Schließen, Tabwechsel, Springen: nichts Getipptes darf verloren gehen.
+        self.commit_table_edits();
         match a {
             Action::Cmd(c) => self.apply_cmd(c),
             Action::Paste => match arboard::Clipboard::new().and_then(|mut c| c.get_text()) {
@@ -1604,6 +1618,7 @@ impl App {
             }
         }
         if ctx.input(|i| i.viewport().close_requested()) && !self.close_confirmed {
+            self.commit_table_edits();
             if self.settings.remember_session && self.storage.is_some() {
                 // Alles Ungespeicherte wandert in die Sitzung und ist beim nächsten Start wieder da.
                 if let Some(r) = ctx.input(|i| i.viewport().inner_rect) {

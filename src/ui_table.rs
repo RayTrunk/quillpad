@@ -8,10 +8,10 @@ use crate::doc::{Document, SelSet};
 use crate::editor::{Metrics, Palette, View};
 use egui::{pos2, Key, Modifiers, Rect, Sense, Ui, Vec2};
 
-/// Ab dieser Textgröße startet eine Tabellendatei nicht in der Tabelle.
 mod input;
 mod paint;
 
+/// Ab dieser Textgröße startet eine Tabellendatei nicht in der Tabelle.
 pub const AUTO_TABLE_MAX_BYTES: usize = 50 << 20;
 /// Datensätze, aus denen die Spaltenbreite geschätzt wird.
 const SAMPLE_RECORDS: usize = 200;
@@ -50,6 +50,8 @@ pub struct TableState {
     sel_drag: bool,
     /// Bearbeitung eben begonnen: Fokus und Schreibmarke noch setzen.
     edit_fresh: bool,
+    /// Zelle, deren Inhalt gerade bearbeitet wird (Datensatz, Spalte).
+    edit_at: Option<(usize, usize)>,
     vbar_drag: bool,
     hbar_drag: bool,
 }
@@ -71,6 +73,7 @@ impl TableState {
             resize: None,
             sel_drag: false,
             edit_fresh: false,
+            edit_at: None,
             vbar_drag: false,
             hbar_drag: false,
         }
@@ -210,6 +213,18 @@ fn first_change(doc: &Document, since: u64) -> Option<usize> {
     pos
 }
 
+/// Position aus Revision `since` auf den jetzigen Text umrechnen.
+fn map_pos(doc: &Document, since: u64, mut p: usize) -> usize {
+    for r in doc.log.iter().filter(|r| r.rev > since) {
+        if p >= r.start + r.removed {
+            p = p - r.removed + r.inserted;
+        } else if p > r.start {
+            p = r.start + r.inserted;
+        }
+    }
+    p.min(doc.len())
+}
+
 /// Zieht den Dialekt fürs Anzeigen heran: Ein leeres Dokument hat keine Kopfzeile,
 /// damit es eine bearbeitbare Zelle gibt.
 fn shown_dialect(doc: &Document) -> Option<Dialect> {
@@ -322,11 +337,29 @@ impl Ctx<'_> {
         true
     }
 
-    /// Bearbeitung übernehmen und weitergehen.
+    /// Bearbeitung in die bearbeitete Zelle übernehmen und weitergehen. Ist die aktive Zelle
+    /// inzwischen woanders (Suche, Springen), bleibt sie dort und rutscht nur mit dem Text mit.
     fn commit(&mut self, step: Step) {
         let Some(value) = self.st.editing.take() else { return };
         let (p, _) = parsed(self.doc);
-        let (rec, col) = self.active(&p);
+        let active = self.active(&p);
+        let (rec, col) = self.st.edit_at.take().unwrap_or(active);
+        if (rec, col) != active {
+            let keep = self.v.sels.clone();
+            let since = self.doc.rev;
+            let text = self.doc.full_text();
+            let changes = csv::set_cell(&text, &p, self.d, rec, col, &value);
+            let at = cell_pos(&p, rec, col);
+            if self.apply(changes, at, at, false) {
+                let mut keep = keep;
+                for s in keep.sels.iter_mut() {
+                    s.anchor = map_pos(self.doc, since, s.anchor);
+                    s.head = map_pos(self.doc, since, s.head);
+                }
+                self.v.set_sels(keep);
+            }
+            return;
+        }
         let text = self.doc.full_text();
         let changes = csv::set_cell(&text, &p, self.d, rec, col, &value);
         let before = cell_pos(&p, rec, col);
@@ -398,16 +431,16 @@ impl Ctx<'_> {
             .collect()
     }
 
-    fn clear_selection(&mut self, p: &Parsed) {
-        let (r0, r1, c0, c1) = self.selection(p);
-        let text = self.doc.full_text();
-        let mut changes = Vec::new();
-        for vr in r0..=r1 {
-            let Some(&rec) = self.st.rows.rows.get(vr) else { continue };
-            for c in c0..=c1 {
-                changes.extend(csv::set_cell(&text, p, self.d, rec, c, ""));
-            }
+    fn clear_selection(&mut self, p: &Parsed, chars: &[char]) {
+        if self.st.rows.rows.is_empty() {
+            return;
         }
+        let (r0, r1, c0, c1) = self.selection(p);
+        let cells: Vec<(usize, usize)> = self.st.rows.rows[r0..=r1.min(self.st.rows.rows.len() - 1)]
+            .iter()
+            .flat_map(|&rec| (c0..=c1).map(move |c| (rec, c)))
+            .collect();
+        let changes = csv::clear_cells(chars, p, self.d.delim, &cells);
         let (rec, col) = self.active(p);
         let at = cell_pos(p, rec, col);
         let anchor = self.st.anchor;
@@ -469,7 +502,27 @@ impl Ctx<'_> {
         self.st.anchor = None;
         self.st.editing = Some(value);
         self.st.edit_fresh = true;
+        self.st.edit_at = Some((rec, col));
     }
+}
+
+/// Offene Zellbearbeitung übernehmen, z. B. vor Speichern, Schließen oder Tabwechsel.
+pub fn commit_edit(doc: &mut Document, v: &mut View) {
+    let Some(mut st) = v.table.take() else { return };
+    if st.editing.is_some() {
+        match shown_dialect(doc) {
+            Some(d) => {
+                let (p, _) = parsed(doc);
+                let ncols = p.records.iter().map(|r| r.fields.len()).max().unwrap_or(1).max(1);
+                let mut out = TableOut::default();
+                Ctx { doc, v, st: &mut st, d, ncols, out: &mut out }.commit(Step::Stay);
+                // Wer gerade tippte, tippt in der Tabelle weiter.
+                v.want_focus |= st.focused;
+            }
+            None => st.editing = None,
+        }
+    }
+    v.table = Some(st);
 }
 
 pub fn show(ui: &mut Ui, doc: &mut Document, v: &mut View, pal: &Palette, m: &mut Metrics, retro: bool) -> TableOut {
@@ -542,6 +595,13 @@ fn draw(
             let rev = cx.doc.rev;
             set_active(cx.v, cx.st, &p, rev, first, col.min(ncols - 1));
         }
+    }
+
+    // Aktive Zelle unter offener Bearbeitung verschoben (Suche, Springen): erst übernehmen.
+    if cx.st.editing.is_some() && cx.st.edit_at.is_some_and(|e| e != cx.active(&p)) {
+        cx.v.want_focus |= ctx.memory(|mem| mem.has_focus(edit_id));
+        cx.commit(Step::Stay);
+        (p, chars) = parsed(cx.doc);
     }
 
     // Aufteilung

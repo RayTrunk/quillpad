@@ -1437,3 +1437,56 @@ fn table_edit_keys_tab_escape_and_alt_enter() {
     assert_eq!(r.text(), "a,b,c\nx,\"\",3\n", "Entf leert die Zelle, Stil des Feldes bleibt");
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn clearing_a_large_selection_is_one_quick_step() {
+    let mut r = Rig::new();
+    let mut t = String::from("a,b,c\n");
+    for i in 0..20_000 {
+        t.push_str(&format!("{i},x{i},\"y\"\n"));
+    }
+    let dir = open_csv(&mut r, "tblclear", "t.csv", &t);
+    let start = std::time::Instant::now();
+    r.key(Key::A, Modifiers::CTRL);
+    r.key(Key::Delete, Modifiers::NONE);
+    let took = start.elapsed();
+    let expect = format!("a,b,c\n{}", ",,\"\"\n".repeat(20_000));
+    assert!(r.text() == expect, "alle Zellen leer, Anführungszeichen bleiben");
+    assert_eq!(r.app.cur_doc().undo.len(), 1, "ein Rückgängig-Schritt");
+    assert!(took.as_secs() < 20, "Leeren dauerte {took:?}");
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn undo_and_delete_in_one_frame_use_fresh_fields() {
+    let mut r = Rig::new();
+    let dir = open_csv(&mut r, "tblundodel", "t.csv", "a,b\n1,2\n3,4\n");
+    r.typed("xyz");
+    r.key(Key::Enter, Modifiers::NONE);
+    assert_eq!(r.text(), "a,b\nxyz,2\n3,4\n");
+    let k = |key, modifiers| Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers };
+    r.frame_with(vec![k(Key::Z, Modifiers::CTRL), k(Key::Delete, Modifiers::NONE)]);
+    r.frames(1);
+    assert_eq!(r.text(), "a,b\n,2\n3,4\n", "Entf trifft die Zelle im zurückgenommenen Text");
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn open_cell_edit_is_kept_on_save_and_find() {
+    let mut r = Rig::new();
+    let dir = open_csv(&mut r, "tblsave", "t.csv", "a,b\n1,2\n3,4\n");
+    r.typed("9");
+    r.key(Key::S, Modifiers::CTRL);
+    assert_eq!(std::fs::read_to_string(dir.join("t.csv")).unwrap(), "a,b\n9,2\n3,4\n", "Strg+S übernimmt die offene Bearbeitung");
+    r.typed("7");
+    r.app.find.what = "4".into();
+    r.app.find.mode = crate::search::Mode::Normal;
+    assert!(r.app.find_step(false));
+    r.frames(2);
+    assert_eq!(r.text(), "a,b\n7,2\n3,4\n", "Wert landet in der bearbeiteten Zelle");
+    assert_eq!(table_cell(&mut r), (2, 1), "aktive Zelle bleibt beim Treffer");
+    r.typed("8");
+    r.act(Action::NextTab);
+    assert_eq!(r.app.docs.values().find(|d| d.path.is_some()).unwrap().full_text(), "a,b\n7,2\n3,8\n", "Tabwechsel übernimmt");
+    std::fs::remove_dir_all(&dir).unwrap();
+}

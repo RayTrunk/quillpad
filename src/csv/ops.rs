@@ -87,6 +87,16 @@ fn field_change(chars: &[char], f: &Field, delim: char, value: &str) -> Option<C
     Some(Change { start: f.start, end: f.end, text: encode(value, delim, f.quoted) })
 }
 
+/// Leert viele Zellen auf einmal; der Text wird nur einmal als Zeichen gebraucht.
+/// Fehlende Felder bleiben fehlend, schon leere Felder ergeben keine Änderung.
+pub fn clear_cells(chars: &[char], p: &Parsed, delim: char, cells: &[(usize, usize)]) -> Vec<Change> {
+    cells
+        .iter()
+        .filter_map(|&(rec, col)| p.records.get(rec)?.fields.get(col))
+        .filter_map(|f| field_change(chars, f, delim, ""))
+        .collect()
+}
+
 pub fn set_cell(text: &str, p: &Parsed, d: Dialect, rec: usize, col: usize, value: &str) -> Vec<Change> {
     let Some(r) = p.records.get(rec) else { return vec![] };
     let chars: Vec<char> = text.chars().collect();
@@ -398,6 +408,21 @@ pub fn from_tsv(s: &str) -> Vec<Vec<String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn clear_cells_keeps_quote_style_and_skips_missing() {
+        let t = "a;\"b\";c
+x;;z
+only
+";
+        let p = parse(t, ';');
+        let chars: Vec<char> = t.chars().collect();
+        let ch = clear_cells(&chars, &p, ';', &[(0, 0), (0, 1), (1, 1), (2, 0), (2, 2)]);
+        assert_eq!(apply(t, &ch), ";\"\";c
+x;;z
+
+");
+    }
     use crate::csv::parse::parse;
 
     fn d(delim: char) -> Dialect {

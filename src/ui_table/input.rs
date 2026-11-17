@@ -188,7 +188,7 @@ fn table_key(
         }
         Event::Cut => {
             cx.out.clipboard = Some(csv::to_tsv(&cx.selected_values(p, chars)));
-            cx.clear_selection(p);
+            cx.clear_selection(p, chars);
             reparse(cx, p, chars);
             true
         }
@@ -208,8 +208,15 @@ fn table_key(
             let last_row = cx.st.rows.rows.len().saturating_sub(1);
             let last_col = cx.ncols - 1;
             match key {
-                Key::Z if ctrl => cx.undo(mo.shift),
-                Key::Y if ctrl => cx.undo(true),
+                // Danach neu parsen: weitere Tasten desselben Bildes brauchen die neuen Feldgrenzen.
+                Key::Z if ctrl => {
+                    cx.undo(mo.shift);
+                    reparse(cx, p, chars);
+                }
+                Key::Y if ctrl => {
+                    cx.undo(true);
+                    reparse(cx, p, chars);
+                }
                 Key::A if ctrl => {
                     if let (Some(&a), Some(&b)) = (cx.st.rows.rows.first(), cx.st.rows.rows.last()) {
                         cx.st.anchor = Some((a, 0));
@@ -239,7 +246,7 @@ fn table_key(
                 Key::F2 if !mo.shift => cx.start_edit(p, chars, None),
                 Key::Backspace => cx.start_edit(p, chars, Some(String::new())),
                 Key::Delete => {
-                    cx.clear_selection(p);
+                    cx.clear_selection(p, chars);
                     reparse(cx, p, chars);
                 }
                 Key::Escape => cx.st.anchor = None,
