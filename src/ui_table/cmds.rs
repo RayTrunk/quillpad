@@ -192,6 +192,8 @@ impl Ctx<'_> {
         let first = usize::from(self.d.header);
         let before = cell_pos(p, rec, col);
         let n = self.st.rows.rows.len();
+        // Zeichen aus dem Zwischenspeicher, passend zu `p`: kein Kopieren des ganzen Texts.
+        let (_, chars) = parsed(self.doc);
         match c {
             T::RowAbove | T::RowBelow => {
                 // Im Text direkt vor bzw. nach dem Datensatz der aktiven Zelle, in der Ansicht
@@ -202,7 +204,7 @@ impl Ctx<'_> {
                     None => (p.records.len(), n),
                 };
                 let at = at.max(first);
-                let changes = csv::insert_row(&self.doc.full_text(), p, self.d, at);
+                let changes = csv::insert_row(&chars, p, self.d, at);
                 let after = changes.first().map_or(before, |ch| ch.start + usize::from(ch.text.starts_with('\n')));
                 if self.apply(changes, before, after, true) {
                     let rev = self.doc.rev;
@@ -214,7 +216,7 @@ impl Ctx<'_> {
             }
             T::DeleteRows => {
                 let recs: Vec<usize> = self.st.rows.rows[r0..=r1.min(n - 1)].iter().copied().filter(|&r| r >= first).collect();
-                let changes = csv::delete_rows(&self.doc.full_text(), p, &recs);
+                let changes = csv::delete_rows(&chars, p, &recs);
                 let after = changes.iter().map(|ch| ch.start).min().unwrap_or(before);
                 if self.apply(changes, before, after, true) {
                     let rev = self.doc.rev;
@@ -232,9 +234,8 @@ impl Ctx<'_> {
                 // Nur ohne Sortierung und Filter: Ansichtszeilen sind dann aufeinanderfolgende Datensätze.
                 let up = c == T::RowUp;
                 let (a, b) = (self.st.rows.rows[r0], self.st.rows.rows[r1.min(n - 1)]);
-                let text = self.doc.full_text();
                 let changes = if a == b {
-                    csv::move_row(&text, p, a, up)
+                    csv::move_row(&chars, p, a, up)
                 } else {
                     // Block um eins verschieben: der Nachbar wandert auf die andere Seite.
                     let mut order: Vec<usize> = (first..p.records.len()).collect();
@@ -243,7 +244,7 @@ impl Ctx<'_> {
                     } else {
                         order[a - first..=b + 1 - first].rotate_right(1);
                     }
-                    csv::apply_order(&text, p, self.d, &order)
+                    csv::apply_order(&chars, p, self.d, &order)
                 };
                 let anchor = self.st.anchor;
                 if self.apply(changes, before, before, true) {
@@ -254,7 +255,7 @@ impl Ctx<'_> {
             }
             T::ColLeft | T::ColRight => {
                 let at = if c == T::ColLeft { col } else { col + 1 };
-                let changes = csv::insert_col(&self.doc.full_text(), p, self.d, at);
+                let changes = csv::insert_col(p, self.d, at);
                 if self.apply(changes, before, before, true) {
                     if let Some(&w) = self.st.widths.get(col) {
                         self.st.widths.insert(at.min(self.st.widths.len()), w);
@@ -264,7 +265,7 @@ impl Ctx<'_> {
                 }
             }
             T::DeleteCol => {
-                let changes = csv::delete_col(&self.doc.full_text(), p, col);
+                let changes = csv::delete_col(p, col);
                 if self.apply(changes, before, before, true) {
                     if col < self.st.widths.len() {
                         self.st.widths.remove(col);
@@ -280,7 +281,7 @@ impl Ctx<'_> {
             T::ColMoveLeft | T::ColMoveRight => {
                 let left = c == T::ColMoveLeft;
                 let to = if left { col - 1 } else { col + 1 };
-                let changes = csv::move_col(&self.doc.full_text(), p, self.d, col, left);
+                let changes = csv::move_col(&chars, p, self.d, col, left);
                 if self.apply(changes, before, before, true) {
                     if to < self.st.widths.len() && col < self.st.widths.len() {
                         self.st.widths.swap(col, to);
@@ -297,7 +298,7 @@ impl Ctx<'_> {
                 // Datensätze bytegleich in Ansichtsreihenfolge; danach ist die Sortierung aus.
                 let order = self.st.rows.rows.clone();
                 let target = self.view_row(rec).map_or(rec, |vr| first + vr);
-                let changes = csv::apply_order(&self.doc.full_text(), p, self.d, &order);
+                let changes = csv::apply_order(&chars, p, self.d, &order);
                 self.st.rows.sort = None;
                 self.apply(changes, before, before, true);
                 self.after_struct(target, col);

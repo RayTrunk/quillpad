@@ -1,7 +1,7 @@
 //! Tabellenaktionen als minimale Textersetzungen. Nicht angefasste Felder
 //! bleiben dadurch Byte für Byte erhalten. Positionen sind Zeichenindizes.
 
-use super::parse::{field_value, Dialect, Field, Parsed};
+use super::parse::{field_is_empty, field_value, Dialect, Field, Parsed};
 
 /// Zeichenbereich im alten Text, der durch `text` ersetzt wird.
 #[derive(Clone, Debug, PartialEq)]
@@ -47,11 +47,10 @@ pub fn encode(value: &str, delim: char, force_quote: bool) -> String {
 }
 
 /// Wahr, wenn mindestens 90 % der nicht-leeren Felder in Anführungszeichen stehen.
-pub fn file_quotes(text: &str, p: &Parsed) -> bool {
-    let chars: Vec<char> = text.chars().collect();
+pub fn file_quotes(chars: &[char], p: &Parsed) -> bool {
     let (mut quoted, mut total) = (0usize, 0usize);
     for f in p.records.iter().flat_map(|r| &r.fields) {
-        if field_value(&chars, f).is_empty() {
+        if field_is_empty(chars, f) {
             continue;
         }
         total += 1;
@@ -104,16 +103,15 @@ pub fn clear_cells(chars: &[char], p: &Parsed, delim: char, cells: &[(usize, usi
         .collect()
 }
 
-pub fn set_cell(text: &str, p: &Parsed, d: Dialect, rec: usize, col: usize, value: &str) -> Vec<Change> {
+/// `fq`: Stil der Datei (`file_quotes`), gilt nur für neu entstehende Felder.
+pub fn set_cell(chars: &[char], p: &Parsed, d: Dialect, fq: bool, rec: usize, col: usize, value: &str) -> Vec<Change> {
     let Some(r) = p.records.get(rec) else { return vec![] };
-    let chars: Vec<char> = text.chars().collect();
     if let Some(f) = r.fields.get(col) {
-        return field_change(&chars, f, d.delim, value).into_iter().collect();
+        return field_change(chars, f, d.delim, value).into_iter().collect();
     }
     if value.is_empty() {
         return vec![];
     }
-    let fq = file_quotes(text, p);
     let mut t = d.delim.to_string().repeat(col + 1 - r.fields.len());
     t.push_str(&new_value(value, d.delim, fq));
     vec![Change { start: r.end, end: r.end, text: t }]
@@ -121,9 +119,9 @@ pub fn set_cell(text: &str, p: &Parsed, d: Dialect, rec: usize, col: usize, valu
 
 /// Fügt einen leeren Datensatz ein, der danach Index `at` hat (`at` gleich
 /// Datensatzzahl hängt ans Ende an).
-pub fn insert_row(text: &str, p: &Parsed, d: Dialect, at: usize) -> Vec<Change> {
+pub fn insert_row(chars: &[char], p: &Parsed, d: Dialect, at: usize) -> Vec<Change> {
     let row = d.delim.to_string().repeat(col_count(p, d).saturating_sub(1));
-    let n = text.chars().count();
+    let n = chars.len();
     if let Some(r) = p.records.get(at) {
         return vec![Change { start: r.start, end: r.start, text: format!("{row}\n") }];
     }
@@ -133,8 +131,8 @@ pub fn insert_row(text: &str, p: &Parsed, d: Dialect, at: usize) -> Vec<Change> 
 
 /// Löscht Datensätze nach rohem Index (Kopfzeile ist Index 0); den Schutz der
 /// Kopfzeile übernimmt der Aufrufer.
-pub fn delete_rows(text: &str, p: &Parsed, recs: &[usize]) -> Vec<Change> {
-    let n = text.chars().count();
+pub fn delete_rows(chars: &[char], p: &Parsed, recs: &[usize]) -> Vec<Change> {
+    let n = chars.len();
     let len = p.records.len();
     let mut del = vec![false; len];
     for &i in recs {
@@ -178,7 +176,7 @@ fn swap(chars: &[char], a: (usize, usize), b: (usize, usize)) -> Vec<Change> {
 
 /// Tauscht einen Datensatz mit dem Nachbarn (roher Index; Kopfzeilenschutz ist
 /// Sache des Aufrufers).
-pub fn move_row(text: &str, p: &Parsed, rec: usize, up: bool) -> Vec<Change> {
+pub fn move_row(chars: &[char], p: &Parsed, rec: usize, up: bool) -> Vec<Change> {
     let i = if up {
         match rec.checked_sub(1) {
             Some(i) => i,
@@ -190,12 +188,11 @@ pub fn move_row(text: &str, p: &Parsed, rec: usize, up: bool) -> Vec<Change> {
     if rec >= p.records.len() || i + 1 >= p.records.len() {
         return vec![];
     }
-    let chars: Vec<char> = text.chars().collect();
     let (a, b) = (&p.records[i], &p.records[i + 1]);
-    swap(&chars, (a.start, a.end), (b.start, b.end))
+    swap(chars, (a.start, a.end), (b.start, b.end))
 }
 
-pub fn insert_col(_text: &str, p: &Parsed, d: Dialect, at: usize) -> Vec<Change> {
+pub fn insert_col(p: &Parsed, d: Dialect, at: usize) -> Vec<Change> {
     let delim = d.delim.to_string();
     p.records
         .iter()
@@ -207,7 +204,7 @@ pub fn insert_col(_text: &str, p: &Parsed, d: Dialect, at: usize) -> Vec<Change>
 }
 
 /// Entfernt Spalte `col`; ein Datensatz mit nur einem Feld wird zur leeren Zeile.
-pub fn delete_col(_text: &str, p: &Parsed, col: usize) -> Vec<Change> {
+pub fn delete_col(p: &Parsed, col: usize) -> Vec<Change> {
     let mut out = Vec::new();
     for r in &p.records {
         let Some(f) = r.fields.get(col) else { continue };
@@ -225,7 +222,7 @@ pub fn delete_col(_text: &str, p: &Parsed, col: usize) -> Vec<Change> {
 
 /// Tauscht Spalte `col` mit ihrem Nachbarn. Hat ein Datensatz nur die linke der
 /// beiden Spalten, wandert deren Wert per Trennzeichen in die rechte Spalte.
-pub fn move_col(text: &str, p: &Parsed, d: Dialect, col: usize, left: bool) -> Vec<Change> {
+pub fn move_col(chars: &[char], p: &Parsed, d: Dialect, col: usize, left: bool) -> Vec<Change> {
     let i = if left {
         match col.checked_sub(1) {
             Some(i) => i,
@@ -237,14 +234,13 @@ pub fn move_col(text: &str, p: &Parsed, d: Dialect, col: usize, left: bool) -> V
     if !p.records.iter().any(|r| r.fields.len() > i + 1) {
         return vec![];
     }
-    let chars: Vec<char> = text.chars().collect();
     let mut out = Vec::new();
     for r in &p.records {
         match (r.fields.get(i), r.fields.get(i + 1)) {
-            (Some(a), Some(b)) => out.extend(swap(&chars, (a.start, a.end), (b.start, b.end))),
+            (Some(a), Some(b)) => out.extend(swap(chars, (a.start, a.end), (b.start, b.end))),
             (Some(a), None) if a.start < a.end => {
                 out.push(Change { start: a.start, end: a.end, text: String::new() });
-                let t = format!("{}{}", d.delim, slice(&chars, a.start, a.end));
+                let t = format!("{}{}", d.delim, slice(chars, a.start, a.end));
                 out.push(Change { start: r.end, end: r.end, text: t });
             }
             _ => {}
@@ -255,7 +251,7 @@ pub fn move_col(text: &str, p: &Parsed, d: Dialect, col: usize, left: bool) -> V
 
 /// `order` ist eine vollständige Permutation der Datensatzindizes: ab 1, wenn
 /// `d.header` gesetzt ist (Kopfzeile bleibt), sonst ab 0.
-pub fn apply_order(text: &str, p: &Parsed, d: Dialect, order: &[usize]) -> Vec<Change> {
+pub fn apply_order(chars: &[char], p: &Parsed, d: Dialect, order: &[usize]) -> Vec<Change> {
     let first = usize::from(d.header);
     let len = p.records.len();
     if first + order.len() != len {
@@ -268,13 +264,12 @@ pub fn apply_order(text: &str, p: &Parsed, d: Dialect, order: &[usize]) -> Vec<C
         }
         seen[o] = true;
     }
-    let chars: Vec<char> = text.chars().collect();
     let mut out = Vec::new();
     for (k, &src) in order.iter().enumerate() {
         let slot = first + k;
         if src != slot {
             let (s, t) = (&p.records[slot], &p.records[src]);
-            out.push(Change { start: s.start, end: s.end, text: slice(&chars, t.start, t.end) });
+            out.push(Change { start: s.start, end: s.end, text: slice(chars, t.start, t.end) });
         }
     }
     out
@@ -295,10 +290,8 @@ fn tail_change(r: &super::parse::Record, delim: char, fq: bool, tail: &[(usize, 
 
 /// Setzt viele Zellen (Datensatz, Spalte, Wert) auf einmal, z. B. eine Auswahl füllen oder
 /// in eine sortierte Ansicht einfügen. Spalten jenseits der Spaltenzahl fallen weg (`true`).
-pub fn set_cells(text: &str, p: &Parsed, d: Dialect, cells: &[(usize, usize, String)]) -> (Vec<Change>, bool) {
-    let chars: Vec<char> = text.chars().collect();
+pub fn set_cells(chars: &[char], p: &Parsed, d: Dialect, fq: bool, cells: &[(usize, usize, String)]) -> (Vec<Change>, bool) {
     let ncols = col_count(p, d);
-    let fq = file_quotes(text, p);
     let mut by_rec: std::collections::BTreeMap<usize, Vec<(usize, &String)>> = Default::default();
     let mut cut = false;
     for (rec, col, v) in cells {
@@ -316,7 +309,7 @@ pub fn set_cells(text: &str, p: &Parsed, d: Dialect, cells: &[(usize, usize, Str
         let mut tail = Vec::new();
         for (c, v) in vals {
             match r.fields.get(c) {
-                Some(f) => out.extend(field_change(&chars, f, d.delim, v)),
+                Some(f) => out.extend(field_change(chars, f, d.delim, v)),
                 None => tail.push((c, v)),
             }
         }
@@ -326,16 +319,15 @@ pub fn set_cells(text: &str, p: &Parsed, d: Dialect, cells: &[(usize, usize, Str
 }
 
 pub fn paste_block(
-    text: &str,
+    chars: &[char],
     p: &Parsed,
     d: Dialect,
+    fq: bool,
     rec: usize,
     col: usize,
     block: &[Vec<String>],
 ) -> (Vec<Change>, bool) {
-    let chars: Vec<char> = text.chars().collect();
     let ncols = col_count(p, d);
-    let fq = file_quotes(text, p);
     let mut out = Vec::new();
     let mut truncated = false;
     let mut new_rows: Vec<String> = Vec::new();
@@ -348,7 +340,7 @@ pub fn paste_block(
                 if c >= ncols {
                     truncated = true;
                 } else if let Some(f) = r.fields.get(c) {
-                    out.extend(field_change(&chars, f, d.delim, v));
+                    out.extend(field_change(chars, f, d.delim, v));
                 } else {
                     tail.push((c, v));
                 }
@@ -457,8 +449,7 @@ mod tests {
     fn clear_cells_keeps_quote_style_and_skips_missing() {
         let t = "a;\"b\";c\nx;;z\nonly\n";
         let p = parse(t, ';');
-        let chars: Vec<char> = t.chars().collect();
-        let ch = clear_cells(&chars, &p, ';', &[(0, 0), (0, 1), (1, 1), (2, 0), (2, 2)]);
+        let ch = clear_cells(&cs(t), &p, ';', &[(0, 0), (0, 1), (1, 1), (2, 0), (2, 2)]);
         assert_eq!(apply(t, &ch), ";\"\";c\nx;;z\n\n");
     }
 
@@ -470,13 +461,13 @@ mod tests {
 ";
         let p = parse(t, ',');
         let v = |r, c| (r, c, "x".to_string());
-        let (ch, cut) = set_cells(t, &p, d(','), &[v(1, 0), v(1, 1), v(2, 0), v(2, 2), v(2, 5)]);
+        let (ch, cut) = set_cells(&cs(t), &p, d(','), file_quotes(&cs(t), &p), &[v(1, 0), v(1, 1), v(2, 0), v(2, 2), v(2, 5)]);
         assert!(cut, "Spalte 5 gibt es nicht");
         assert_eq!(apply(t, &ch), "a,b,c
 x,x,3
 x,,x
 ");
-        let (ch, _) = set_cells(t, &p, d(','), &[(1, 0, "1".into())]);
+        let (ch, _) = set_cells(&cs(t), &p, d(','), false, &[(1, 0, "1".into())]);
         assert!(ch.is_empty(), "gleicher Wert: keine Änderung");
     }
 
@@ -484,9 +475,14 @@ x,,x
         Dialect { delim, header: true }
     }
 
+    fn cs(t: &str) -> Vec<char> {
+        t.chars().collect()
+    }
+
     fn set(text: &str, delim: char, rec: usize, col: usize, v: &str) -> String {
         let p = parse(text, delim);
-        apply(text, &set_cell(text, &p, d(delim), rec, col, v))
+        let fq = file_quotes(&cs(text), &p);
+        apply(text, &set_cell(&cs(text), &p, d(delim), fq, rec, col, v))
     }
 
     #[test]
@@ -505,8 +501,8 @@ x,,x
     fn set_cell_same_value_is_noop() {
         let t = "a,\"b\"\n";
         let p = parse(t, ',');
-        assert!(set_cell(t, &p, d(','), 0, 0, "a").is_empty());
-        assert!(set_cell(t, &p, d(','), 0, 1, "b").is_empty());
+        assert!(set_cell(&cs(t), &p, d(','), false, 0, 0, "a").is_empty());
+        assert!(set_cell(&cs(t), &p, d(','), false, 0, 1, "b").is_empty());
     }
 
     #[test]
@@ -518,62 +514,62 @@ x,,x
     fn insert_row_at_end_without_trailing_newline() {
         let t = "h1,h2\na,b";
         let p = parse(t, ',');
-        assert_eq!(apply(t, &insert_row(t, &p, d(','), 2)), "h1,h2\na,b\n,");
+        assert_eq!(apply(t, &insert_row(&cs(t), &p, d(','), 2)), "h1,h2\na,b\n,");
         let t = "\"h1\",\"h2\"\n\"a\",\"b\"";
         let p = parse(t, ',');
-        assert!(file_quotes(t, &p));
-        assert_eq!(apply(t, &insert_row(t, &p, d(','), 2)), "\"h1\",\"h2\"\n\"a\",\"b\"\n,");
+        assert!(file_quotes(&cs(t), &p));
+        assert_eq!(apply(t, &insert_row(&cs(t), &p, d(','), 2)), "\"h1\",\"h2\"\n\"a\",\"b\"\n,");
         let t = "h1,h2\na,b\n";
         let p = parse(t, ',');
-        assert_eq!(apply(t, &insert_row(t, &p, d(','), 1)), "h1,h2\n,\na,b\n");
-        assert_eq!(apply(t, &insert_row(t, &p, d(','), 2)), "h1,h2\na,b\n,\n");
+        assert_eq!(apply(t, &insert_row(&cs(t), &p, d(','), 1)), "h1,h2\n,\na,b\n");
+        assert_eq!(apply(t, &insert_row(&cs(t), &p, d(','), 2)), "h1,h2\na,b\n,\n");
     }
 
     #[test]
     fn delete_last_row_without_trailing_newline() {
         let t = "h\na\nb";
         let p = parse(t, ',');
-        assert_eq!(apply(t, &delete_rows(t, &p, &[2])), "h\na");
-        assert_eq!(apply(t, &delete_rows(t, &p, &[1, 2])), "h");
+        assert_eq!(apply(t, &delete_rows(&cs(t), &p, &[2])), "h\na");
+        assert_eq!(apply(t, &delete_rows(&cs(t), &p, &[1, 2])), "h");
         let t = "h\na\nb\n";
         let p = parse(t, ',');
-        assert_eq!(apply(t, &delete_rows(t, &p, &[1])), "h\nb\n");
-        assert_eq!(apply(t, &delete_rows(t, &p, &[2, 0])), "a\n");
+        assert_eq!(apply(t, &delete_rows(&cs(t), &p, &[1])), "h\nb\n");
+        assert_eq!(apply(t, &delete_rows(&cs(t), &p, &[2, 0])), "a\n");
     }
 
     #[test]
     fn move_multiline_record() {
         let t = "id;n\n1;\"x\ny\"\n2;z\n";
         let p = parse(t, ';');
-        assert_eq!(apply(t, &move_row(t, &p, 1, false)), "id;n\n2;z\n1;\"x\ny\"\n");
-        assert_eq!(apply(t, &move_row(t, &p, 2, true)), "id;n\n2;z\n1;\"x\ny\"\n");
+        assert_eq!(apply(t, &move_row(&cs(t), &p, 1, false)), "id;n\n2;z\n1;\"x\ny\"\n");
+        assert_eq!(apply(t, &move_row(&cs(t), &p, 2, true)), "id;n\n2;z\n1;\"x\ny\"\n");
     }
 
     #[test]
     fn insert_delete_move_col() {
         let t = "a,b\nc,d\n";
         let p = parse(t, ',');
-        assert_eq!(apply(t, &insert_col(t, &p, d(','), 1)), "a,,b\nc,,d\n");
-        assert_eq!(apply(t, &insert_col(t, &p, d(','), 2)), "a,b,\nc,d,\n");
-        assert_eq!(apply(t, &delete_col(t, &p, 0)), "b\nd\n");
-        assert_eq!(apply(t, &delete_col(t, &p, 1)), "a\nc\n");
-        assert_eq!(apply(t, &move_col(t, &p, d(','), 1, true)), "b,a\nd,c\n");
-        assert_eq!(apply(t, &move_col(t, &p, d(','), 0, false)), "b,a\nd,c\n");
+        assert_eq!(apply(t, &insert_col(&p, d(','), 1)), "a,,b\nc,,d\n");
+        assert_eq!(apply(t, &insert_col(&p, d(','), 2)), "a,b,\nc,d,\n");
+        assert_eq!(apply(t, &delete_col(&p, 0)), "b\nd\n");
+        assert_eq!(apply(t, &delete_col(&p, 1)), "a\nc\n");
+        assert_eq!(apply(t, &move_col(&cs(t), &p, d(','), 1, true)), "b,a\nd,c\n");
+        assert_eq!(apply(t, &move_col(&cs(t), &p, d(','), 0, false)), "b,a\nd,c\n");
         // Ungleich lange Zeilen: der Wert wandert mit in die andere Spalte
         let t = "a,b\nc\n";
         let p = parse(t, ',');
-        assert_eq!(apply(t, &move_col(t, &p, d(','), 0, false)), "b,a\n,c\n");
-        assert_eq!(apply(t, &move_col(t, &p, d(','), 1, true)), "b,a\n,c\n");
+        assert_eq!(apply(t, &move_col(&cs(t), &p, d(','), 0, false)), "b,a\n,c\n");
+        assert_eq!(apply(t, &move_col(&cs(t), &p, d(','), 1, true)), "b,a\n,c\n");
     }
 
     #[test]
     fn apply_order_keeps_records_bytewise_and_trailing_state() {
         let t = "h\n\"b\"\na\nc";
         let p = parse(t, ',');
-        assert_eq!(apply(t, &apply_order(t, &p, d(','), &[2, 1, 3])), "h\na\n\"b\"\nc");
+        assert_eq!(apply(t, &apply_order(&cs(t), &p, d(','), &[2, 1, 3])), "h\na\n\"b\"\nc");
         let t = "h\n\"b\"\na\nc\n";
         let p = parse(t, ',');
-        assert_eq!(apply(t, &apply_order(t, &p, d(','), &[3, 2, 1])), "h\nc\na\n\"b\"\n");
+        assert_eq!(apply(t, &apply_order(&cs(t), &p, d(','), &[3, 2, 1])), "h\nc\na\n\"b\"\n");
     }
 
     #[test]
@@ -584,10 +580,10 @@ x,,x
             vec!["x".to_string(), "y".to_string(), "z".to_string()],
             vec!["q".to_string(), "r".to_string(), "s".to_string()],
         ];
-        let (ch, truncated) = paste_block(t, &p, d(','), 1, 1, &block);
+        let (ch, truncated) = paste_block(&cs(t), &p, d(','), false, 1, 1, &block);
         assert!(truncated);
         assert_eq!(apply(t, &ch), "a,b\n1,x\n,q\n");
-        let (ch, truncated) = paste_block(t, &p, d(','), 0, 0, &[vec!["m".into(), "n".into()]]);
+        let (ch, truncated) = paste_block(&cs(t), &p, d(','), false, 0, 0, &[vec!["m".into(), "n".into()]]);
         assert!(!truncated);
         assert_eq!(apply(t, &ch), "m,n\n1,2\n");
     }

@@ -1235,9 +1235,9 @@ fn table_edit_is_one_undo_step() {
     let d = r.app.cur_doc_mut();
     let dialect = d.csv.as_ref().unwrap().dialect;
     let rev = d.rev;
-    let (p, _) = d.csv.as_mut().unwrap().parsed(&d.text, rev);
-    let mut ch = crate::csv::set_cell(&before, &p, dialect, 1, 0, "X");
-    ch.extend(crate::csv::set_cell(&before, &p, dialect, 2, 1, "Y"));
+    let (p, chars) = d.csv.as_mut().unwrap().parsed(&d.text, rev);
+    let mut ch = crate::csv::set_cell(&chars, &p, dialect, false, 1, 0, "X");
+    ch.extend(crate::csv::set_cell(&chars, &p, dialect, false, 2, 1, "Y"));
     assert!(crate::csv::apply_changes(d, ch, &SelSet::single(0), 0));
     assert_eq!(d.full_text(), "a,b\nX,2\n3,Y\n");
     assert!(d.is_modified());
@@ -1256,12 +1256,11 @@ fn three_cx_cell_edit_saves_bytewise() {
     let mut r = Rig::new();
     r.app.open_path(&f);
     r.frames(2);
-    let text = r.text();
     let d = r.app.cur_doc_mut();
     let dialect = d.csv.as_ref().unwrap().dialect;
     let rev = d.rev;
-    let (p, _) = d.csv.as_mut().unwrap().parsed(&d.text, rev);
-    let ch = crate::csv::set_cell(&text, &p, dialect, 2, 1, "+43 9");
+    let (p, chars) = d.csv.as_mut().unwrap().parsed(&d.text, rev);
+    let ch = crate::csv::set_cell(&chars, &p, dialect, true, 2, 1, "+43 9");
     assert!(crate::csv::apply_changes(d, ch, &SelSet::single(0), 0));
     r.act(Action::Save);
     let expect = String::from_utf8(orig.to_vec()).unwrap().replace("+43 2", "+43 9");
@@ -1948,5 +1947,102 @@ fn menu_paste_copy_and_line_commands_in_table() {
     r.act(Action::Cmd(Cmd::Undo));
     assert_eq!(r.text(), "a,b\n1,2\n3,4\n");
     assert_eq!(table_state(&mut r).rows.rows, vec![1, 2]);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// Messung, kein Test: `cargo test --release -- --ignored --nocapture table_timing_100k`.
+#[test]
+#[ignore]
+fn table_timing_100k() {
+    use std::time::{Duration, Instant};
+    let mut t = String::from("id,name,city,note\n1\n");
+    for i in 2..100_000 {
+        t.push_str(&format!("{i},\"Name {i}\",Stadt{},x{i}\n", i % 97));
+    }
+    let mut r = Rig::new();
+    let dir = open_csv(&mut r, "tbltiming", "t.csv", &t);
+    let median = |mut v: Vec<Duration>| {
+        v.sort();
+        v[v.len() / 2]
+    };
+    let mut cell = Vec::new();
+    let mut missing = Vec::new();
+    let mut row = Vec::new();
+    let mut parse = Vec::new();
+    let mut idle = Vec::new();
+    for k in 0..7 {
+        let s = Instant::now();
+        r.frames(2);
+        idle.push(s.elapsed());
+        // Vorhandenes Feld (Datensatz 2, Spalte 0)
+        r.app.cur_view_mut().sels = SelSet::single(cell_start(&mut r, 2, 0));
+        r.frames(1);
+        r.typed(&format!("{k}"));
+        let s = Instant::now();
+        r.key(Key::Enter, Modifiers::NONE);
+        cell.push(s.elapsed());
+        // Fehlendes Feld einer kurzen Zeile (Datensatz 1, Spalte 3)
+        r.key(Key::ArrowUp, Modifiers::CTRL);
+        r.key(Key::End, Modifiers::NONE);
+        r.typed(&format!("{k}"));
+        let s = Instant::now();
+        r.key(Key::Escape, Modifiers::NONE);
+        let esc = s.elapsed();
+        r.typed(&format!("{k}"));
+        let s = Instant::now();
+        r.key(Key::Enter, Modifiers::NONE);
+        missing.push(s.elapsed().saturating_sub(esc));
+        r.key(Key::Z, Modifiers::CTRL);
+        // Zeile einfügen
+        let s = Instant::now();
+        r.key(Key::Enter, Modifiers::CTRL);
+        row.push(s.elapsed());
+        r.key(Key::Z, Modifiers::CTRL);
+        // Reines Neuparsen
+        let d = r.app.cur_doc_mut();
+        let c = d.csv.as_mut().unwrap();
+        let mut fresh = crate::csv::DocCsv::new(c.dialect);
+        let s = Instant::now();
+        let _ = fresh.parsed(&d.text, d.rev);
+        parse.push(s.elapsed());
+    }
+    println!("zwei leere Bilder:       {:?}", median(idle));
+    println!("Zelle übernehmen:        {:?}", median(cell));
+    println!("fehlendes Feld setzen:   {:?}", median(missing));
+    println!("Zeile einfügen:          {:?}", median(row));
+    println!("Parsen (DocCsv::parsed): {:?}", median(parse));
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+fn cell_start(r: &mut Rig, rec: usize, col: usize) -> usize {
+    let d = r.app.cur_doc_mut();
+    let rev = d.rev;
+    let (p, _) = d.csv.as_mut().unwrap().parsed(&d.text, rev);
+    crate::csv::cell_pos(&p, rec, col)
+}
+
+#[test]
+fn text_views_do_not_parse_the_table() {
+    let mut r = Rig::new();
+    let dir = open_csv(&mut r, "tbllazy", "t.csv", "a,b\n1,2\n3,4\n");
+    r.act(Action::CloneToOther);
+    assert!(r.app.panes[0].tabs[0].table.is_some(), "links Tabelle");
+    // Links ein anderer Tab vorn: die Tabelle ist nicht zu sehen.
+    r.app.active_pane = 0;
+    r.act(Action::New);
+    r.app.active_pane = 1;
+    r.app.panes[1].tabs[0].want_focus = true;
+    r.frames(2);
+    r.typed("x");
+    r.frames(3);
+    let id = r.app.panes[1].tabs[0].doc;
+    let d = &r.app.docs[&id];
+    assert!(d.full_text().contains('x'), "getippt: {:?}", d.full_text());
+    assert_ne!(d.csv.as_ref().unwrap().parsed_rev(), Some(d.rev), "Text getippt, aber keine sichtbare Tabelle: nicht geparst");
+    // Die Tabelle wieder vorn: jetzt wird geparst.
+    r.app.active_pane = 0;
+    r.act(Action::PrevTab);
+    let d = &r.app.docs[&id];
+    assert_eq!(d.csv.as_ref().unwrap().parsed_rev(), Some(d.rev));
     std::fs::remove_dir_all(&dir).unwrap();
 }

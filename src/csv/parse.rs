@@ -36,7 +36,11 @@ pub const DELIMS: [char; 4] = [',', ';', '\t', '|'];
 
 /// Zerlegt den (bereits auf `\n` normalisierten) Text in Datensätze und Felder.
 pub fn parse(text: &str, delim: char) -> Parsed {
-    let chars: Vec<char> = text.chars().collect();
+    parse_chars(&text.chars().collect::<Vec<char>>(), delim)
+}
+
+/// Wie `parse`, für Text, der schon als Zeichen vorliegt.
+pub fn parse_chars(chars: &[char], delim: char) -> Parsed {
     let n = chars.len();
     let mut out = Parsed::default();
     let mut i = 0;
@@ -115,6 +119,17 @@ pub fn field_value(text_chars: &[char], f: &Field) -> String {
         i += 1;
     }
     out
+}
+
+/// Ist der Wert leer? Wie `field_value(..).is_empty()`, nur ohne den Wert zu bauen.
+pub fn field_is_empty(text_chars: &[char], f: &Field) -> bool {
+    let s = &text_chars[f.start..f.end];
+    if !f.quoted {
+        return s.is_empty();
+    }
+    // Nur das öffnende Anführungszeichen oder genau "": sonst folgt ein Zeichen, ein
+    // verdoppeltes Anführungszeichen oder Text hinter dem schließenden.
+    s.len() == 1 || (s.len() == 2 && s[1] == '"')
 }
 
 const DETECT_RECORDS: usize = 50;
@@ -243,6 +258,18 @@ mod tests {
                 if r.end < chars.len() {
                     assert_eq!(chars[r.end], '\n');
                 }
+            }
+        }
+    }
+
+    #[test]
+    fn field_is_empty_matches_value() {
+        for t in ["a,,\"\",\"\"\"\",\"x\"y,\"\"z,\"", "\"", "\"\"", ",\"\"\"\"", "\"\"
+\"a"] {
+            let p = parse(t, ',');
+            let chars: Vec<char> = t.chars().collect();
+            for f in p.records.iter().flat_map(|r| &r.fields) {
+                assert_eq!(field_is_empty(&chars, f), field_value(&chars, f).is_empty(), "{t:?} {f:?}");
             }
         }
     }

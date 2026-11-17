@@ -1,7 +1,7 @@
 //! Anbindung der Tabelle ans Dokument: Dialekt, Parse-Cache, Änderungen als eine Gruppe.
 
-use super::ops::{back_to_front, Change};
-use super::parse::{detect, field_value, parse, Dialect, Parsed};
+use super::ops::{back_to_front, file_quotes, Change};
+use super::parse::{detect, field_value, parse, parse_chars, Dialect, Parsed};
 use crate::doc::{Document, Kind, SelSet};
 use ropey::Rope;
 use std::path::Path;
@@ -14,6 +14,8 @@ pub struct DocCsv {
     /// Vom Nutzer gewählt: wird beim Neuladen nicht mehr überschrieben.
     pub manual: bool,
     cache: Option<Cache>,
+    /// Stil der Datei (`file_quotes`) für (Revision, Dialekt); erst bei Bedarf berechnet.
+    quotes: Option<(u64, Dialect, bool)>,
     /// Spaltennamen aus der Kopfzeile für die Textansicht: (Revision, Dialekt, Namen).
     head: Option<(u64, Dialect, Arc<Vec<String>>)>,
 }
@@ -23,7 +25,7 @@ const HEAD_CHARS: usize = 8192;
 
 impl DocCsv {
     pub fn new(dialect: Dialect) -> DocCsv {
-        DocCsv { dialect, manual: false, cache: None, head: None }
+        DocCsv { dialect, manual: false, cache: None, quotes: None, head: None }
     }
 
     /// Neu geparst wird nur bei geänderter Revision oder geändertem Dialekt.
@@ -33,11 +35,35 @@ impl DocCsv {
                 return (p.clone(), c.clone());
             }
         }
-        let s = doc_text.to_string();
-        let p = Arc::new(parse(&s, self.dialect.delim));
-        let c = Arc::new(s.chars().collect::<Vec<char>>());
+        // Zeichen einmal sammeln: der Parser und alle Tabellenaktionen arbeiten darauf.
+        let mut c = Vec::with_capacity(doc_text.len_chars());
+        for chunk in doc_text.chunks() {
+            c.extend(chunk.chars());
+        }
+        let c = Arc::new(c);
+        let p = Arc::new(parse_chars(&c, self.dialect.delim));
         self.cache = Some((rev, self.dialect, p.clone(), c.clone()));
         (p, c)
+    }
+
+    /// Revision des zwischengespeicherten Parse-Ergebnisses (für Tests).
+    #[cfg(test)]
+    pub fn parsed_rev(&self) -> Option<u64> {
+        self.cache.as_ref().map(|c| c.0)
+    }
+
+    /// Stehen die Felder der Datei überwiegend in Anführungszeichen? Je Revision und Dialekt
+    /// einmal berechnet.
+    pub fn file_quotes(&mut self, doc_text: &Rope, rev: u64) -> bool {
+        if let Some((r, d, q)) = self.quotes {
+            if r == rev && d == self.dialect {
+                return q;
+            }
+        }
+        let (p, c) = self.parsed(doc_text, rev);
+        let q = file_quotes(&c, &p);
+        self.quotes = Some((rev, self.dialect, q));
+        q
     }
 
     /// Spaltennamen aus der Kopfzeile (erste Textzeile je Wert, leer = keiner), ohne den

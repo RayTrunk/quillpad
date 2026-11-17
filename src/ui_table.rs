@@ -321,6 +321,13 @@ fn parsed(doc: &mut Document) -> (Arc<Parsed>, Arc<Vec<char>>) {
     c.parsed(&doc.text, rev)
 }
 
+/// Anführungsstil der Datei für neue Felder (zwischengespeichert je Revision).
+fn file_quotes(doc: &mut Document) -> bool {
+    let rev = doc.rev;
+    let c = doc.csv.as_mut().expect("Tabelle ohne CSV-Dialekt");
+    c.file_quotes(&doc.text, rev)
+}
+
 /// Stand des Texts übernehmen. Fremde Änderung (Textansicht, Rückgängig dort, Ersetzen):
 /// die Zelle der ersten Änderung wird aktiv, Sortierung und Filter werden neu angewandt.
 fn prepare(doc: &mut Document, v: &mut View, st: &mut TableState, d: Dialect) -> (Arc<Parsed>, Arc<Vec<char>>) {
@@ -465,14 +472,16 @@ impl Ctx<'_> {
     /// inzwischen woanders (Suche, Springen), bleibt sie dort und rutscht nur mit dem Text mit.
     fn commit(&mut self, step: Step) {
         let Some(value) = self.st.editing.take() else { return };
-        let (p, _) = parsed(self.doc);
+        let (p, chars) = parsed(self.doc);
         let active = self.active(&p);
         let (rec, col) = self.st.edit_at.take().unwrap_or(active);
+        // Der Stil der Datei zählt nur für ein Feld, das es noch nicht gibt.
+        let missing = p.records.get(rec).is_some_and(|r| col >= r.fields.len());
+        let fq = missing && file_quotes(self.doc);
         if (rec, col) != active {
             let keep = self.v.sels.clone();
             let since = self.doc.rev;
-            let text = self.doc.full_text();
-            let changes = csv::set_cell(&text, &p, self.d, rec, col, &value);
+            let changes = csv::set_cell(&chars, &p, self.d, fq, rec, col, &value);
             let at = cell_pos(&p, rec, col);
             if self.apply(changes, at, at, false) {
                 let mut keep = keep;
@@ -484,8 +493,7 @@ impl Ctx<'_> {
             }
             return;
         }
-        let text = self.doc.full_text();
-        let changes = csv::set_cell(&text, &p, self.d, rec, col, &value);
+        let changes = csv::set_cell(&chars, &p, self.d, fq, rec, col, &value);
         let before = cell_pos(&p, rec, col);
         let after = changes.first().map_or(before, |c| {
             // Ein fehlendes Feld kommt hinter den ergänzten Trennzeichen zu stehen.
@@ -585,7 +593,8 @@ impl Ctx<'_> {
         let (r0, r1, c0, c1) = self.selection(p);
         let rec = self.st.rows.rows[r0.min(n - 1)];
         let at = cell_pos(p, rec, c0);
-        let text = self.doc.full_text();
+        let (_, chars) = parsed(self.doc);
+        let fq = file_quotes(self.doc);
         if block.len() == 1 && block[0].len() == 1 && (r0 != r1 || c0 != c1) {
             // Ein einzelner Wert füllt die ganze Auswahl.
             let value = &block[0][0];
@@ -593,7 +602,7 @@ impl Ctx<'_> {
                 .iter()
                 .flat_map(|&r| (c0..=c1).map(move |c| (r, c, value.clone())))
                 .collect();
-            let (changes, cut) = csv::set_cells(&text, p, self.d, &cells);
+            let (changes, cut) = csv::set_cells(&chars, p, self.d, fq, &cells);
             let (arec, acol) = self.active(p);
             let anchor = self.st.anchor;
             if self.apply(changes, at, at, false) {
@@ -608,7 +617,7 @@ impl Ctx<'_> {
             return;
         }
         let (changes, cut, cut_rows, structural) = if self.st.rows.is_identity() {
-            let (ch, cut) = csv::paste_block(&text, p, self.d, rec, c0, &block);
+            let (ch, cut) = csv::paste_block(&chars, p, self.d, fq, rec, c0, &block);
             (ch, cut, false, true)
         } else {
             // Sortiert oder gefiltert: in die folgenden Ansichtszeilen, keine neuen Zeilen.
@@ -620,7 +629,7 @@ impl Ctx<'_> {
                     None => cut_rows = true,
                 }
             }
-            let (ch, cut) = csv::set_cells(&text, p, self.d, &cells);
+            let (ch, cut) = csv::set_cells(&chars, p, self.d, fq, &cells);
             (ch, cut, cut_rows, false)
         };
         if self.apply(changes, at, at, structural) {
