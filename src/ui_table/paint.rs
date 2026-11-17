@@ -1,6 +1,6 @@
 //! Zeichnen der Tabelle: Zellen, feste Kopfzeile und Nummernspalte, Eingabefeld, Bildlaufleisten.
 
-use super::{col_name, first_line, fit, text_w, Ctx, Layout, PAD};
+use super::{col_label, first_line, fit, text_w, Ctx, Layout, PAD};
 use crate::csv::{self, field_value, Parsed};
 use crate::editor::{Metrics, Palette};
 use egui::{pos2, vec2, Align2, Key, KeyboardShortcut, Modifiers, Rect, Sense, Stroke, StrokeKind, Ui};
@@ -110,12 +110,7 @@ pub(super) fn paint(
             break;
         }
         let cell = Rect::from_min_size(pos2(x, head.top()), vec2(w, head_h));
-        let label = if d.header {
-            p.records.first().and_then(|r| r.fields.get(c)).map(|f| field_value(chars, f)).unwrap_or_default()
-        } else {
-            col_name(c)
-        };
-        let label = if label.is_empty() { col_name(c) } else { first_line(&label).0.to_string() };
+        let label = col_label(p, chars, d, c);
         let arrow = match cx.st.rows.sort {
             Some((sc, csv::SortDir::Asc)) if sc == c => Some("▲"),
             Some((sc, csv::SortDir::Desc)) if sc == c => Some("▼"),

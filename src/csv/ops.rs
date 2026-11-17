@@ -273,6 +273,51 @@ pub fn apply_order(text: &str, p: &Parsed, d: Dialect, order: &[usize]) -> Vec<C
     out
 }
 
+/// Fehlende Felder am Ende eines Datensatzes ergänzen; `tail` aufsteigend nach Spalte.
+fn tail_change(r: &super::parse::Record, delim: char, fq: bool, tail: &[(usize, &String)]) -> Option<Change> {
+    let &(maxc, _) = tail.last()?;
+    let mut t = String::new();
+    for c in r.fields.len()..=maxc {
+        t.push(delim);
+        if let Some((_, v)) = tail.iter().find(|(tc, _)| *tc == c) {
+            t.push_str(&new_value(v, delim, fq));
+        }
+    }
+    Some(Change { start: r.end, end: r.end, text: t })
+}
+
+/// Setzt viele Zellen (Datensatz, Spalte, Wert) auf einmal, z. B. eine Auswahl füllen oder
+/// in eine sortierte Ansicht einfügen. Spalten jenseits der Spaltenzahl fallen weg (`true`).
+pub fn set_cells(text: &str, p: &Parsed, d: Dialect, cells: &[(usize, usize, String)]) -> (Vec<Change>, bool) {
+    let chars: Vec<char> = text.chars().collect();
+    let ncols = col_count(p, d);
+    let fq = file_quotes(text, p);
+    let mut by_rec: std::collections::BTreeMap<usize, Vec<(usize, &String)>> = Default::default();
+    let mut cut = false;
+    for (rec, col, v) in cells {
+        if *col >= ncols {
+            cut = true;
+        } else if *rec < p.records.len() {
+            by_rec.entry(*rec).or_default().push((*col, v));
+        }
+    }
+    let mut out = Vec::new();
+    for (rec, mut vals) in by_rec {
+        let r = &p.records[rec];
+        vals.sort_by_key(|&(c, _)| c);
+        vals.dedup_by_key(|&mut (c, _)| c);
+        let mut tail = Vec::new();
+        for (c, v) in vals {
+            match r.fields.get(c) {
+                Some(f) => out.extend(field_change(&chars, f, d.delim, v)),
+                None => tail.push((c, v)),
+            }
+        }
+        out.extend(tail_change(r, d.delim, fq, &tail));
+    }
+    (out, cut)
+}
+
 pub fn paste_block(
     text: &str,
     p: &Parsed,
@@ -301,16 +346,7 @@ pub fn paste_block(
                     tail.push((c, v));
                 }
             }
-            if let Some(&(maxc, _)) = tail.last() {
-                let mut t = String::new();
-                for c in r.fields.len()..=maxc {
-                    t.push(d.delim);
-                    if let Some((_, v)) = tail.iter().find(|(tc, _)| *tc == c) {
-                        t.push_str(&new_value(v, d.delim, fq));
-                    }
-                }
-                out.push(Change { start: r.end, end: r.end, text: t });
-            }
+            out.extend(tail_change(r, d.delim, fq, &tail));
         } else {
             let mut vals = vec![String::new(); ncols];
             for (c, v) in cells {
@@ -417,6 +453,24 @@ mod tests {
         let chars: Vec<char> = t.chars().collect();
         let ch = clear_cells(&chars, &p, ';', &[(0, 0), (0, 1), (1, 1), (2, 0), (2, 2)]);
         assert_eq!(apply(t, &ch), ";\"\";c\nx;;z\n\n");
+    }
+
+    #[test]
+    fn set_cells_fills_existing_and_missing_fields() {
+        let t = "a,b,c
+1,2,3
+4
+";
+        let p = parse(t, ',');
+        let v = |r, c| (r, c, "x".to_string());
+        let (ch, cut) = set_cells(t, &p, d(','), &[v(1, 0), v(1, 1), v(2, 0), v(2, 2), v(2, 5)]);
+        assert!(cut, "Spalte 5 gibt es nicht");
+        assert_eq!(apply(t, &ch), "a,b,c
+x,x,3
+x,,x
+");
+        let (ch, _) = set_cells(t, &p, d(','), &[(1, 0, "1".into())]);
+        assert!(ch.is_empty(), "gleicher Wert: keine Änderung");
     }
 
     fn d(delim: char) -> Dialect {

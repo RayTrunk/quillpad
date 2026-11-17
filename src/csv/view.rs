@@ -80,9 +80,13 @@ impl RowView {
 
     /// Eigene Zeilen gelöscht: sie fallen weg, die übrigen Indizes rücken nach.
     pub fn after_own_delete(&mut self, recs: &[usize], rev: u64) {
-        self.rows.retain(|r| !recs.contains(r));
+        // Sortiert nachschlagen: viele gelöschte Zeilen bleiben so schnell.
+        let mut del = recs.to_vec();
+        del.sort_unstable();
+        del.dedup();
+        self.rows.retain(|r| del.binary_search(r).is_err());
         for r in &mut self.rows {
-            *r -= recs.iter().filter(|&&d| d < *r).count();
+            *r -= del.partition_point(|&d| d < *r);
         }
         self.built_rev = rev;
     }

@@ -14,6 +14,7 @@ pub(super) fn pointer(ui: &Ui, cx: &mut Ctx, lay: &Layout, resp: &Response, p: &
     // Maus
     let pointer = ui.input(|i| i.pointer.interact_pos());
     let (pressed, down, mods) = ui.input(|i| (i.pointer.primary_pressed(), i.pointer.primary_down(), i.modifiers));
+    let secondary = ui.input(|i| i.pointer.secondary_pressed());
     if let Some(pt) = pointer {
         let in_head = pt.y >= rect.top() && pt.y < body.top() && pt.x >= body.left() && pt.x < body.right();
         let border = if in_head { lay.hit_border(&cx.st.widths, cx.st.scroll.x, pt.x) } else { None };
@@ -29,6 +30,21 @@ pub(super) fn pointer(ui: &Ui, cx: &mut Ctx, lay: &Layout, resp: &Response, p: &
             resp.request_focus();
             if let Some(c) = border {
                 cx.st.resize = Some((c, pt.x, cx.st.widths[c]));
+            } else if in_head {
+                if let Some(c) = lay.hit_col(&cx.st.widths, cx.st.scroll.x, pt.x) {
+                    if mods.ctrl || mods.command {
+                        // Strg+Klick: ganze Spalte, aktive Zelle oben.
+                        if let (Some(&a), Some(&b)) = (cx.st.rows.rows.first(), cx.st.rows.rows.last()) {
+                            let rev = cx.doc.rev;
+                            set_active(cx.v, cx.st, p, rev, a, c);
+                            cx.st.anchor = Some((b, c));
+                        }
+                    } else {
+                        // Klick: aufsteigend, absteigend, aus. Nur die Ansicht ändert sich.
+                        cx.st.rows.cycle_sort(c);
+                        cx.rebuild_view();
+                    }
+                }
             } else if body.contains(pt) || (pt.x < body.left() && pt.y >= body.top() && pt.y < body.bottom()) {
                 let vr = ((pt.y - body.top() + cx.st.scroll.y) / row_h).floor().max(0.0) as usize;
                 if vr < nrows {
@@ -42,6 +58,35 @@ pub(super) fn pointer(ui: &Ui, cx: &mut Ctx, lay: &Layout, resp: &Response, p: &
                     } else if let Some(c) = lay.hit_col(&cx.st.widths, cx.st.scroll.x, pt.x) {
                         cx.move_to(p, vr, c, mods.shift);
                         cx.st.sel_drag = true;
+                    }
+                }
+            }
+        } else if secondary && resp.contains_pointer() && !on_bar {
+            // Rechtsklick: außerhalb der Auswahl wird die Zelle, Zeile oder Spalte darunter aktiv.
+            if cx.st.editing.is_some() {
+                cx.commit(Step::Stay);
+                (*p, *chars) = parsed(cx.doc);
+            }
+            resp.request_focus();
+            let (sr0, sr1, sc0, sc1) = cx.selection(p);
+            let col = lay.hit_col(&cx.st.widths, cx.st.scroll.x, pt.x);
+            let vr = ((pt.y - body.top() + cx.st.scroll.y) / row_h).floor().max(0.0) as usize;
+            if in_head {
+                if let Some(c) = col.filter(|c| !(sc0..=sc1).contains(c)) {
+                    let cur = cx.view_row(cx.active(p).0).unwrap_or(0);
+                    cx.move_to(p, cur, c, false);
+                }
+            } else if pt.y >= body.top() && pt.y < body.bottom() && vr < nrows {
+                if pt.x < body.left() {
+                    if !(sr0..=sr1).contains(&vr) {
+                        let rec = cx.st.rows.rows[vr];
+                        cx.st.anchor = Some((rec, 0));
+                        let rev = cx.doc.rev;
+                        set_active(cx.v, cx.st, p, rev, rec, ncols - 1);
+                    }
+                } else if let Some(c) = col {
+                    if !((sr0..=sr1).contains(&vr) && (sc0..=sc1).contains(&c)) {
+                        cx.move_to(p, vr, c, false);
                     }
                 }
             }

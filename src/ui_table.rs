@@ -6,10 +6,15 @@
 use crate::csv::{self, cell_at, cell_pos, field_value, Dialect, Parsed, RowView};
 use crate::doc::{Document, SelSet};
 use crate::editor::{Metrics, Palette, View};
-use egui::{pos2, Key, Modifiers, Rect, Sense, Ui, Vec2};
+use egui::{pos2, vec2, Key, Modifiers, Rect, Sense, Ui, UiBuilder, Vec2};
+use std::sync::Arc;
 
+mod bar;
+mod cmds;
 mod input;
 mod paint;
+
+pub use cmds::{cmd_state, menu_items, run_cmd, CmdState, TableCmd};
 
 /// Ab dieser Textgröße startet eine Tabellendatei nicht in der Tabelle.
 pub const AUTO_TABLE_MAX_BYTES: usize = 50 << 20;
@@ -54,6 +59,11 @@ pub struct TableState {
     edit_at: Option<(usize, usize)>,
     vbar_drag: bool,
     hbar_drag: bool,
+    /// Kopfzeile beim letzten Zeichnen.
+    pub head_rect: Rect,
+    /// Filterleiste offen; `filter_focus`: Eingabefeld bekommt den Fokus.
+    pub filter_open: bool,
+    filter_focus: bool,
 }
 
 impl TableState {
@@ -76,6 +86,9 @@ impl TableState {
             edit_at: None,
             vbar_drag: false,
             hbar_drag: false,
+            head_rect: Rect::NOTHING,
+            filter_open: false,
+            filter_focus: false,
         }
     }
 }
@@ -85,6 +98,8 @@ pub struct TableOut {
     pub focused: bool,
     pub clipboard: Option<String>,
     pub status: Option<String>,
+    /// Befehle aus Kontextmenü und Filterleiste; laufen als `Action::Table`.
+    pub cmds: Vec<TableCmd>,
 }
 
 /// Startet dieses Dokument beim Öffnen in der Tabelle?
@@ -135,6 +150,20 @@ pub fn col_name(mut i: usize) -> String {
     }
     s.reverse();
     String::from_utf8(s).unwrap_or_default()
+}
+
+/// Überschrift einer Spalte: Name aus der Kopfzeile, sonst A, B, C …
+fn col_label(p: &Parsed, chars: &[char], d: Dialect, c: usize) -> String {
+    let label = if d.header {
+        p.records.first().and_then(|r| r.fields.get(c)).map(|f| field_value(chars, f)).unwrap_or_default()
+    } else {
+        String::new()
+    };
+    if label.is_empty() { col_name(c) } else { first_line(&label).0.to_string() }
+}
+
+fn ncols_of(p: &Parsed) -> usize {
+    p.records.iter().map(|r| r.fields.len()).max().unwrap_or(1).max(1)
 }
 
 /// Erste Textzeile eines Werts und ob weitere folgen.
@@ -232,10 +261,30 @@ fn shown_dialect(doc: &Document) -> Option<Dialect> {
     Some(Dialect { header: d.header && doc.len() > 0, ..d })
 }
 
-fn parsed(doc: &mut Document) -> (std::sync::Arc<Parsed>, std::sync::Arc<Vec<char>>) {
+fn parsed(doc: &mut Document) -> (Arc<Parsed>, Arc<Vec<char>>) {
     let rev = doc.rev;
     let c = doc.csv.as_mut().expect("Tabelle ohne CSV-Dialekt");
     c.parsed(&doc.text, rev)
+}
+
+/// Stand des Texts übernehmen. Fremde Änderung (Textansicht, Rückgängig dort, Ersetzen):
+/// die Zelle der ersten Änderung wird aktiv, Sortierung und Filter werden neu angewandt.
+fn prepare(doc: &mut Document, v: &mut View, st: &mut TableState, d: Dialect) -> (Arc<Parsed>, Arc<Vec<char>>) {
+    if st.seen_rev != doc.rev {
+        if let Some(pos) = first_change(doc, st.seen_rev) {
+            v.set_sels(SelSet::single(pos.min(doc.len())));
+        }
+        st.seen_rev = doc.rev;
+        st.virt = None;
+        st.anchor = None;
+        st.editing = None;
+    }
+    let (p, chars) = parsed(doc);
+    if st.built != Some(d) || st.rows.needs_rebuild(doc.rev) {
+        st.rows.rebuild(&chars, &p, d, doc.rev);
+        st.built = Some(d);
+    }
+    (p, chars)
 }
 
 fn set_active(v: &mut View, st: &mut TableState, p: &Parsed, rev: u64, rec: usize, col: usize) {
@@ -315,6 +364,23 @@ impl Ctx<'_> {
 
     fn view_row(&self, rec: usize) -> Option<usize> {
         self.st.rows.rows.iter().position(|&r| r == rec)
+    }
+
+    /// Kopfzeile ist keine Datenzeile: die Schreibmarke dorthin rutscht auf die erste Zeile.
+    fn leave_header(&mut self, p: &Parsed) {
+        let (rec, col) = self.active(p);
+        if self.view_row(rec).is_none() && !self.st.rows.rows.is_empty() {
+            let first = self.st.rows.rows[0];
+            let rev = self.doc.rev;
+            set_active(self.v, self.st, p, rev, first, col.min(self.ncols - 1));
+        }
+    }
+
+    /// Sortierung und Filter auf den jetzigen Text neu anwenden.
+    fn rebuild_view(&mut self) {
+        let (p, chars) = parsed(self.doc);
+        let rev = self.doc.rev;
+        self.st.rows.rebuild(&chars, &p, self.d, rev);
     }
 
     /// Eigene Änderung übernehmen: eine Gruppe, Ansicht und Schreibmarke mitführen.
@@ -454,21 +520,60 @@ impl Ctx<'_> {
 
     fn paste(&mut self, p: &Parsed, t: &str) {
         let block = csv::from_tsv(t);
-        if block.is_empty() {
+        let n = self.st.rows.rows.len();
+        if block.is_empty() || n == 0 {
             return;
         }
-        let (r0, _, c0, _) = self.selection(p);
-        let Some(&rec) = self.st.rows.rows.get(r0) else { return };
-        let text = self.doc.full_text();
-        let (changes, cut) = csv::paste_block(&text, p, self.d, rec, c0, &block);
+        let (r0, r1, c0, c1) = self.selection(p);
+        let rec = self.st.rows.rows[r0.min(n - 1)];
         let at = cell_pos(p, rec, c0);
-        if self.apply(changes, at, at, true) {
+        let text = self.doc.full_text();
+        if block.len() == 1 && block[0].len() == 1 && (r0 != r1 || c0 != c1) {
+            // Ein einzelner Wert füllt die ganze Auswahl.
+            let value = &block[0][0];
+            let cells: Vec<(usize, usize, String)> = self.st.rows.rows[r0..=r1.min(n - 1)]
+                .iter()
+                .flat_map(|&r| (c0..=c1).map(move |c| (r, c, value.clone())))
+                .collect();
+            let (changes, cut) = csv::set_cells(&text, p, self.d, &cells);
+            let (arec, acol) = self.active(p);
+            let anchor = self.st.anchor;
+            if self.apply(changes, at, at, false) {
+                let (p, _) = parsed(self.doc);
+                let rev = self.doc.rev;
+                set_active(self.v, self.st, &p, rev, arec, acol);
+                self.st.anchor = anchor;
+            }
+            if cut {
+                self.out.status = Some(crate::t!("table.paste_cut"));
+            }
+            return;
+        }
+        let (changes, cut, cut_rows, structural) = if self.st.rows.is_identity() {
+            let (ch, cut) = csv::paste_block(&text, p, self.d, rec, c0, &block);
+            (ch, cut, false, true)
+        } else {
+            // Sortiert oder gefiltert: in die folgenden Ansichtszeilen, keine neuen Zeilen.
+            let mut cells = Vec::new();
+            let mut cut_rows = false;
+            for (i, row) in block.iter().enumerate() {
+                match self.st.rows.rows.get(r0 + i) {
+                    Some(&r) => cells.extend(row.iter().enumerate().map(|(j, v)| (r, c0 + j, v.clone()))),
+                    None => cut_rows = true,
+                }
+            }
+            let (ch, cut) = csv::set_cells(&text, p, self.d, &cells);
+            (ch, cut, cut_rows, false)
+        };
+        if self.apply(changes, at, at, structural) {
             let (p, _) = parsed(self.doc);
             let rev = self.doc.rev;
             set_active(self.v, self.st, &p, rev, rec, c0);
             self.st.anchor = None;
         }
-        if cut {
+        if cut_rows {
+            self.out.status = Some(crate::t!("table.paste_cut_rows"));
+        } else if cut {
             self.out.status = Some(crate::t!("table.paste_cut"));
         }
     }
@@ -519,7 +624,7 @@ pub fn commit_edit(doc: &mut Document, v: &mut View, refocus: bool) {
         match shown_dialect(doc) {
             Some(d) => {
                 let (p, _) = parsed(doc);
-                let ncols = p.records.iter().map(|r| r.fields.len()).max().unwrap_or(1).max(1);
+                let ncols = ncols_of(&p);
                 let mut out = TableOut::default();
                 Ctx { doc, v, st: &mut st, d, ncols, out: &mut out }.commit(Step::Stay);
                 // Wer gerade tippte, tippt in der Tabelle weiter.
@@ -535,7 +640,15 @@ pub fn show(ui: &mut Ui, doc: &mut Document, v: &mut View, pal: &Palette, m: &mu
     let mut out = TableOut::default();
     let Some(mut st) = v.table.take() else { return out };
     if let Some(d) = shown_dialect(doc) {
-        draw(ui, doc, v, &mut st, d, pal, m, retro, &mut out);
+        prepare(doc, v, &mut st, d);
+        let full = ui.max_rect();
+        let mut rect = full;
+        if st.filter_open || st.rows.sort.is_some() {
+            rect.min.y += bar::BAR_H;
+            bar::show(ui, Rect::from_min_size(full.min, vec2(full.width(), bar::BAR_H)), doc, v, &mut st, d, &mut out);
+        }
+        let mut tu = ui.new_child(UiBuilder::new().max_rect(rect));
+        draw(&mut tu, doc, v, &mut st, d, pal, m, retro, &mut out);
     }
     st.focused = out.focused;
     v.table = Some(st);
@@ -559,22 +672,8 @@ fn draw(
     let base_id = egui::Id::new(("table", v.uid));
     let edit_id = base_id.with("edit");
 
-    // Fremde Änderung (Textansicht, Rückgängig dort, Ersetzen): die Zelle der ersten Änderung wird aktiv.
-    if st.seen_rev != doc.rev {
-        if let Some(pos) = first_change(doc, st.seen_rev) {
-            v.set_sels(SelSet::single(pos.min(doc.len())));
-        }
-        st.seen_rev = doc.rev;
-        st.virt = None;
-        st.anchor = None;
-        st.editing = None;
-    }
-    let (mut p, mut chars) = parsed(doc);
-    if st.built != Some(d) || st.rows.needs_rebuild(doc.rev) {
-        st.rows.rebuild(&chars, &p, d, doc.rev);
-        st.built = Some(d);
-    }
-    let ncols = p.records.iter().map(|r| r.fields.len()).max().unwrap_or(1).max(1);
+    let (mut p, mut chars) = prepare(doc, v, st, d);
+    let ncols = ncols_of(&p);
 
     // Spaltenbreiten
     if st.width_ch > 0.0 && (st.width_ch - m.ch).abs() > 0.01 {
@@ -592,16 +691,7 @@ fn draw(
     }
 
     let mut cx = Ctx { doc, v, st, d, ncols, out };
-
-    // Kopfzeile ist keine Datenzeile: die Schreibmarke dorthin rutscht auf die erste Zeile.
-    {
-        let (rec, col) = cx.active(&p);
-        if cx.view_row(rec).is_none() && !cx.st.rows.rows.is_empty() {
-            let first = cx.st.rows.rows[0];
-            let rev = cx.doc.rev;
-            set_active(cx.v, cx.st, &p, rev, first, col.min(ncols - 1));
-        }
-    }
+    cx.leave_header(&p);
 
     // Aktive Zelle unter offener Bearbeitung verschoben (Suche, Springen): erst übernehmen.
     if cx.st.editing.is_some() && cx.st.edit_at.is_some_and(|e| e != cx.active(&p)) {
@@ -645,6 +735,7 @@ fn draw(
         cx.st.scroll -= delta;
     }
 
+    cx.st.head_rect = Rect::from_min_max(pos2(body.left(), rect.top()), pos2(body.right(), body.top()));
     let vbar = Rect::from_min_max(pos2(body.right(), body.top()), pos2(rect.right(), body.bottom()));
     let hbar = Rect::from_min_max(pos2(body.left(), body.bottom()), pos2(body.right(), rect.bottom()));
     let lay = Layout { rect, body, row_h, head_h, num_w, ncols, nrows, need_v, need_h, vbar, hbar };
@@ -683,6 +774,20 @@ fn draw(
     let has_focus = resp.has_focus() || ctx.memory(|mem| mem.has_focus(edit_id)) || cx.st.edit_fresh;
     cx.out.focused = has_focus;
     paint::paint(ui, &mut cx, &lay, &p, &chars, has_focus, pal, m, retro, edit_id);
+
+    // Kontextmenü auf Zelle, Nummer und Überschrift: dieselben Befehle wie im Menü „Tabelle“.
+    let state = cx.cmd_state(&p);
+    let out = &mut *cx.out;
+    resp.context_menu(|ui| {
+        ui.set_min_width(250.0);
+        if let Some(c) = menu_items(ui, &state) {
+            out.cmds.push(c);
+        }
+    });
+    let in_head = ui.input(|i| i.pointer.hover_pos()).is_some_and(|pt| cx.st.head_rect.contains(pt));
+    if in_head && cx.st.resize.is_none() {
+        resp.clone().on_hover_text(crate::t!("table.head_tip"));
+    }
 
     // Bildlaufleisten zuletzt, damit sie über den Zellen liegen; ein Ziehen wirkt ab dem nächsten Bild.
     let before = cx.st.scroll;

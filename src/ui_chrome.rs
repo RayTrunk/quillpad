@@ -8,6 +8,7 @@ use crate::icons::{self, Icon};
 use crate::theme::{self, ThemeId};
 use crate::textops::CaseKind;
 use crate::ui_find::FindTab;
+use crate::ui_table::TableCmd;
 use egui::{pos2, vec2, Align2, Button, Color32, Context, FontData, FontDefinitions, FontFamily, FontId, Key, Rect, RichText, Sense, Stroke, StrokeKind, Ui, UiBuilder};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -180,6 +181,8 @@ pub struct Shortcut {
     alt: bool,
     key: Key,
     editor_only: bool,
+    /// Nur in der Tabellenansicht.
+    table_only: bool,
     action: fn() -> Action,
 }
 
@@ -197,7 +200,24 @@ impl Shortcut {
 
 macro_rules! sc {
     ($keys:expr, $label:expr, $c:expr, $s:expr, $a:expr, $key:ident, $ed:expr, $act:expr) => {
-        Shortcut { keys: $keys, label: $label, ctrl: $c, shift: $s, alt: $a, key: Key::$key, editor_only: $ed, action: || $act }
+        Shortcut { keys: $keys, label: $label, ctrl: $c, shift: $s, alt: $a, key: Key::$key, editor_only: $ed, table_only: false, action: || $act }
+    };
+}
+
+/// Kürzel, die nur in der Tabellenansicht gelten.
+macro_rules! sct {
+    ($keys:expr, $label:expr, $s:expr, $key:ident, $cmd:ident) => {
+        Shortcut {
+            keys: $keys,
+            label: $label,
+            ctrl: true,
+            shift: $s,
+            alt: false,
+            key: Key::$key,
+            editor_only: false,
+            table_only: true,
+            action: || Action::Table(TableCmd::$cmd),
+        }
     };
 }
 
@@ -254,6 +274,9 @@ pub fn shortcuts() -> Vec<Shortcut> {
         sc!("Ctrl+=", "menu.zoom_in", true, false, false, Equals, false, A::ZoomIn),
         sc!("Ctrl+Minus", "menu.zoom_out", true, false, false, Minus, false, A::ZoomOut),
         sc!("Ctrl+0", "menu.zoom_reset", true, false, false, Num0, false, A::ZoomReset),
+        sct!("Ctrl+Enter", "table.row_below", false, Enter, RowBelow),
+        sct!("Ctrl+Shift+Del", "table.delete_rows", true, Delete, DeleteRows),
+        sct!("Ctrl+Shift+L", "table.show_filter", true, L, ShowFilter),
     ]
 }
 
@@ -365,10 +388,18 @@ impl App {
         // Nur der Rest der Tasten bleibt für das Schreibfeld übrig.
         let editor_focus = self.editor_focused;
         let table_focus = self.table_focused;
+        // Tabellenkürzel nur, wenn die Tastatur bei der Tabelle ist (nicht in Such- oder Filterfeld).
+        let table_keys = self.cur_view().table.is_some() && (table_focus || !ctx.wants_keyboard_input());
         let table = shortcuts();
         ctx.input_mut(|i| {
             let mut fired = Vec::new();
+            let mods = i.modifiers;
             i.events.retain(|e| {
+                // Unter Windows kommt Strg+Umschalt+Entf als „Ausschneiden“ an (Umschalt+Entf).
+                if matches!(e, egui::Event::Cut) && table_keys && mods.ctrl && mods.shift {
+                    fired.push(Action::Table(TableCmd::DeleteRows));
+                    return false;
+                }
                 if let egui::Event::Key { key, pressed: true, modifiers, .. } = e {
                     for s in &table {
                         if s.key == *key
@@ -376,6 +407,7 @@ impl App {
                             && s.shift == modifiers.shift
                             && s.alt == modifiers.alt
                             && (!s.editor_only || editor_focus)
+                            && (!s.table_only || table_keys)
                             && !(table_focus && crate::ui_table::claims_key(*key, *modifiers))
                         {
                             fired.push((s.action)());
@@ -497,6 +529,10 @@ impl App {
             }
             if out.status.is_some() {
                 self.table_status = out.status;
+            }
+            if !out.cmds.is_empty() {
+                self.active_pane = pane;
+                self.pending.extend(out.cmds.into_iter().map(Action::Table));
             }
             return;
         }
@@ -804,7 +840,7 @@ impl App {
     }
 
     fn measure_menus(&self, ctx: &Context) -> f32 {
-        let names = [
+        let mut names = vec![
             crate::t!("menu.file"),
             crate::t!("menu.edit"),
             crate::t!("menu.view"),
@@ -813,6 +849,9 @@ impl App {
             crate::t!("menu.tools"),
             crate::t!("menu.help"),
         ];
+        if self.cur_view().table.is_some() {
+            names.push(crate::t!("table.menu"));
+        }
         let font = FontId::proportional(if self.settings.theme.retro() { 13.0 } else { 14.0 });
         names
             .iter()
@@ -881,6 +920,7 @@ impl App {
         let (show_map, show_funcs, show_folder, sync_v, sync_h, on_top, fullscreen, cur_theme) =
             (self.show_map, self.show_funcs, self.show_folder, self.sync_v, self.sync_h, self.on_top, self.fullscreen, self.settings.theme);
         let (cur_table, can_table) = (self.cur_view().table.is_some(), !self.cur_doc().large);
+        let table_cmds = self.table_cmd_state();
         let p = &mut self.pending;
 
         ui.menu_button(crate::t!("menu.file"), |ui| {
@@ -1070,6 +1110,16 @@ impl App {
             mi(ui, p, &crate::t!("menu.goto"), "Ctrl+G", Action::GoToDialog);
             mi(ui, p, &crate::t!("menu.match_brace"), "Ctrl+B", Action::MatchBrace);
         });
+
+        // Nur solange der Tab als Tabelle gezeigt wird.
+        if let Some(state) = table_cmds {
+            ui.menu_button(crate::t!("table.menu"), |ui| {
+                ui.set_min_width(260.0);
+                if let Some(c) = crate::ui_table::menu_items(ui, &state) {
+                    p.push(Action::Table(c));
+                }
+            });
+        }
 
         ui.menu_button(crate::t!("menu.document"), |ui| {
             ui.set_min_width(230.0);

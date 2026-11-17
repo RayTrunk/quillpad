@@ -95,6 +95,8 @@ pub enum Action {
     ToggleLineNumbers,
     /// Tab zwischen Text- und Tabellenansicht umschalten.
     ToggleTable,
+    /// Befehl der Tabellenansicht (Menü „Tabelle“, Kontextmenü, Kürzel).
+    Table(crate::ui_table::TableCmd),
     ZoomIn,
     ZoomOut,
     ZoomReset,
@@ -330,6 +332,15 @@ impl App {
                         t.editing = Some("+43 664 98765\nnur abends".into());
                     }
                 }
+                "tablefilter" => {
+                    // Gefiltert und sortiert: Leiste mit „n von m Zeilen“ und „nur Ansicht“.
+                    self.open_sample_table();
+                    if let Some(t) = self.cur_view_mut().table.as_mut() {
+                        t.filter_open = true;
+                        t.rows.filter = "+49".into();
+                        t.rows.sort = Some((2, crate::csv::SortDir::Asc));
+                    }
+                }
                 "results" => {
                     self.find.what = "map".into();
                     self.find_all_docs(false);
@@ -392,6 +403,26 @@ impl App {
                     crate::ui_table::commit_edit(d, v, refocus);
                 }
             }
+        }
+    }
+
+    /// Was das Menü „Tabelle“ gerade anbietet; `None` ohne Tabellenansicht.
+    pub fn table_cmd_state(&mut self) -> Option<crate::ui_table::CmdState> {
+        let p = &mut self.panes[self.active_pane];
+        let i = p.active.min(p.tabs.len().checked_sub(1)?);
+        let v = &mut p.tabs[i];
+        let d = self.docs.get_mut(&v.doc)?;
+        crate::ui_table::cmd_state(d, v)
+    }
+
+    fn table_cmd(&mut self, c: crate::ui_table::TableCmd) {
+        let p = &mut self.panes[self.active_pane];
+        let Some(i) = p.tabs.len().checked_sub(1).map(|n| p.active.min(n)) else { return };
+        let v = &mut p.tabs[i];
+        let Some(d) = self.docs.get_mut(&v.doc) else { return };
+        let out = crate::ui_table::run_cmd(d, v, c);
+        if out.status.is_some() {
+            self.table_status = out.status;
         }
     }
 
@@ -1139,7 +1170,7 @@ impl App {
                 | Action::ZoomIn
                 | Action::ZoomOut
                 | Action::ZoomReset
-        );
+        ) || matches!(a, Action::Table(c) if c != crate::ui_table::TableCmd::ShowFilter);
         self.commit_table_edits(refocus);
         match a {
             Action::Cmd(c) => self.apply_cmd(c),
@@ -1365,6 +1396,7 @@ impl App {
             Action::ToggleGuides => self.settings.ed.indent_guides = !self.settings.ed.indent_guides,
             Action::ToggleLineNumbers => self.settings.ed.line_numbers = !self.settings.ed.line_numbers,
             Action::ToggleTable => self.toggle_table(),
+            Action::Table(c) => self.table_cmd(c),
             Action::ZoomIn => self.change_font_size(self.settings.font_size + 1.0),
             Action::ZoomOut => self.change_font_size(self.settings.font_size - 1.0),
             Action::ZoomReset => self.change_font_size(16.0),

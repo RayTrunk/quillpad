@@ -11,6 +11,8 @@ struct Rig {
     ctx: Context,
     app: App,
     time: f64,
+    /// Zuletzt in die Zwischenablage gelegter Text.
+    copied: Option<String>,
 }
 
 impl Rig {
@@ -19,21 +21,32 @@ impl Rig {
         crate::i18n::set_lang(crate::i18n::Lang::De);
         let ctx = Context::default();
         let app = App::new(ctx.clone(), None, Default::default(), Vec::new());
-        let mut r = Rig { ctx, app, time: 0.0 };
+        let mut r = Rig { ctx, app, time: 0.0, copied: None };
         r.frames(3);
         r
     }
 
     fn frame_with(&mut self, events: Vec<Event>) {
+        self.frame_mods(events, Modifiers::NONE);
+    }
+
+    /// Ein Bild mit gehaltenen Umschalttasten.
+    fn frame_mods(&mut self, events: Vec<Event>, modifiers: Modifiers) {
         self.time += 1.0 / 60.0;
         let input = RawInput {
             screen_rect: Some(Rect::from_min_size(pos2(0.0, 0.0), vec2(1000.0, 650.0))),
             time: Some(self.time),
             events,
+            modifiers,
             ..Default::default()
         };
         let app = &mut self.app;
-        let _ = self.ctx.run(input, |ctx| app.frame(ctx));
+        let out = self.ctx.run(input, |ctx| app.frame(ctx));
+        for c in out.platform_output.commands {
+            if let egui::OutputCommand::CopyText(t) = c {
+                self.copied = Some(t);
+            }
+        }
     }
 
     fn frames(&mut self, n: usize) {
@@ -618,7 +631,7 @@ fn session_restores_tabs_and_unsaved_text() {
     {
         let ctx = Context::default();
         let app = App::new(ctx.clone(), Some(storage.clone()), Default::default(), Vec::new());
-        let mut r = Rig { ctx, app, time: 0.0 };
+        let mut r = Rig { ctx, app, time: 0.0, copied: None };
         r.frames(2);
         r.typed("nicht gespeichert");
         r.app.open_path(&saved);
@@ -629,7 +642,7 @@ fn session_restores_tabs_and_unsaved_text() {
     }
     let ctx = Context::default();
     let app = App::new(ctx.clone(), Some(storage.clone()), Default::default(), Vec::new());
-    let mut r = Rig { ctx, app, time: 0.0 };
+    let mut r = Rig { ctx, app, time: 0.0, copied: None };
     r.frames(2);
     assert_eq!(r.app.panes[0].tabs.len(), 2);
     let texts: Vec<String> = r.app.panes[0].tabs.iter().map(|v| r.app.docs[&v.doc].full_text()).collect();
@@ -1503,4 +1516,184 @@ fn ctrl_f_during_cell_edit_moves_typing_to_the_find_field() {
     assert!(r.app.find.what.ends_with("xyz"), "Suchfeld hat den Text: {:?}", r.app.find.what);
     assert!(r.app.cur_view().table.as_ref().unwrap().editing.is_none());
     std::fs::remove_dir_all(&dir).unwrap();
+}
+
+use crate::ui_table::TableCmd;
+
+fn table_state(r: &mut Rig) -> &mut crate::ui_table::TableState {
+    r.app.cur_view_mut().table.as_mut().expect("Tabellenansicht")
+}
+
+/// Klick auf die Überschrift von Spalte `col`.
+fn click_head(r: &mut Rig, col: usize, mods: Modifiers) {
+    let st = table_state(r);
+    let x = st.head_rect.left() - st.scroll.x + st.widths[..col].iter().sum::<f32>() + st.widths[col] * 0.5;
+    let p = pos2(x, st.head_rect.center().y);
+    r.frame_mods(vec![Event::PointerMoved(p)], mods);
+    r.frame_mods(vec![Event::PointerButton { pos: p, button: PointerButton::Primary, pressed: true, modifiers: mods }], mods);
+    r.frame_mods(vec![Event::PointerButton { pos: p, button: PointerButton::Primary, pressed: false, modifiers: mods }], mods);
+    r.frames(1);
+}
+
+#[test]
+fn row_insert_delete_via_shortcuts() {
+    let mut r = Rig::new();
+    let dir = open_csv(&mut r, "tblrows", "t.csv", "a,b\n1,2\n3,4\n");
+    r.key(Key::ArrowRight, Modifiers::NONE);
+    r.key(Key::Enter, Modifiers::CTRL);
+    assert_eq!(r.text(), "a,b\n1,2\n,\n3,4\n", "Strg+Eingabe fügt unterhalb ein");
+    assert_eq!(table_cell(&mut r), (2, 1), "neue Zeile ist aktiv, Spalte bleibt");
+    assert_eq!(r.app.cur_doc().undo.len(), 1);
+    r.key(Key::ArrowUp, Modifiers::NONE);
+    r.key(Key::Delete, Modifiers::CTRL | Modifiers::SHIFT);
+    assert_eq!(r.text(), "a,b\n,\n3,4\n", "Strg+Umschalt+Entf löscht die Zeile");
+    assert_eq!(table_cell(&mut r), (1, 1));
+    r.key(Key::ArrowDown, Modifiers::SHIFT);
+    r.key(Key::Delete, Modifiers::CTRL | Modifiers::SHIFT);
+    assert_eq!(r.text(), "a,b\n", "beide ausgewählten Zeilen, die Kopfzeile bleibt");
+    r.key(Key::Delete, Modifiers::CTRL | Modifiers::SHIFT);
+    assert_eq!(r.text(), "a,b\n", "Kopfzeile wird nie gelöscht");
+    r.key(Key::Enter, Modifiers::CTRL);
+    assert_eq!(r.text(), "a,b\n,\n", "nur Kopfzeile: erste Datenzeile entsteht");
+    assert_eq!(r.app.cur_doc().undo.len(), 4, "jede Aktion ein Schritt");
+    // Unter Windows kommt Strg+Umschalt+Entf als „Ausschneiden“ an.
+    r.frame_mods(vec![Event::Cut], Modifiers::CTRL | Modifiers::SHIFT);
+    r.frames(1);
+    assert_eq!(r.text(), "a,b\n", "auch als Ausschneiden-Ereignis");
+    assert_eq!(r.app.cur_doc().undo.len(), 5);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn columns_include_the_header() {
+    let mut r = Rig::new();
+    let dir = open_csv(&mut r, "tblcols", "t.csv", "a,b\n1,2\n");
+    r.act(Action::Table(TableCmd::ColRight));
+    assert_eq!(r.text(), "a,,b\n1,,2\n");
+    assert_eq!(table_cell(&mut r), (1, 1));
+    r.act(Action::Table(TableCmd::ColMoveRight));
+    assert_eq!(r.text(), "a,b,\n1,2,\n");
+    assert_eq!(table_cell(&mut r), (1, 2));
+    r.act(Action::Table(TableCmd::DeleteCol));
+    assert_eq!(r.text(), "a,b\n1,2\n");
+    assert_eq!(table_cell(&mut r), (1, 1), "Nachbar links wird aktiv");
+    r.act(Action::Table(TableCmd::ColLeft));
+    assert_eq!(r.text(), "a,,b\n1,,2\n", "auch die Kopfzeile bekommt die Zelle");
+    assert_eq!(r.app.cur_doc().undo.len(), 4);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn filter_and_sort_do_not_modify() {
+    let mut r = Rig::new();
+    let text = "n,m\nb,1\na,2\nc,3\n";
+    let dir = open_csv(&mut r, "tblfilter", "t.csv", text);
+    click_head(&mut r, 0, Modifiers::NONE);
+    assert_eq!(table_state(&mut r).rows.sort, Some((0, crate::csv::SortDir::Asc)), "Klick sortiert");
+    assert_eq!(table_state(&mut r).rows.rows, vec![2, 1, 3]);
+    r.key(Key::L, Modifiers::CTRL | Modifiers::SHIFT);
+    r.typed("3");
+    assert_eq!(table_state(&mut r).rows.filter, "3", "Strg+Umschalt+L öffnet das Filterfeld");
+    assert_eq!(table_state(&mut r).rows.rows, vec![3]);
+    assert_eq!(r.text(), text);
+    assert!(!r.app.cur_doc().is_modified(), "Filtern und Sortieren ändern nichts");
+    click_head(&mut r, 1, Modifiers::CTRL);
+    assert_eq!(table_state(&mut r).rows.sort, Some((0, crate::csv::SortDir::Asc)), "Strg+Klick sortiert nicht");
+    assert_eq!(table_cell(&mut r).1, 1, "Strg+Klick wählt die Spalte");
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn apply_order_is_one_undo_step() {
+    let mut r = Rig::new();
+    let text = "n\nb\na\nc";
+    let dir = open_csv(&mut r, "tblorder", "t.csv", text);
+    click_head(&mut r, 0, Modifiers::NONE);
+    assert!(!r.app.table_cmd_state().unwrap().enabled(TableCmd::RowUp), "Verschieben gesperrt bei Sortierung");
+    r.act(Action::Table(TableCmd::ApplyOrder));
+    assert_eq!(r.text(), "n\na\nb\nc", "Datensätze in Ansichtsreihenfolge, ohne Zeilenende am Schluss");
+    assert_eq!(r.app.cur_doc().undo.len(), 1);
+    assert_eq!(table_state(&mut r).rows.sort, None, "danach keine Ansichtssortierung");
+    r.key(Key::Z, Modifiers::CTRL);
+    assert_eq!(r.text(), text);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn apply_order_disabled_while_filtered() {
+    let mut r = Rig::new();
+    let text = "n\nb\na\nc\n";
+    let dir = open_csv(&mut r, "tblorderf", "t.csv", text);
+    click_head(&mut r, 0, Modifiers::NONE);
+    r.act(Action::Table(TableCmd::ShowFilter));
+    r.typed("a");
+    let s = r.app.table_cmd_state().unwrap();
+    assert!(!s.enabled(TableCmd::ApplyOrder));
+    assert!(s.enabled(TableCmd::ClearSort));
+    r.act(Action::Table(TableCmd::ApplyOrder));
+    assert_eq!(r.text(), text, "mit Filter keine Übernahme");
+    assert_eq!(r.app.cur_doc().undo.len(), 0);
+    r.act(Action::Table(TableCmd::ClearSort));
+    assert_eq!(table_state(&mut r).rows.sort, None);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn row_insert_in_sorted_view_goes_next_to_the_record() {
+    let mut r = Rig::new();
+    let dir = open_csv(&mut r, "tblsortins", "t.csv", "n\nb\na\nc\n");
+    click_head(&mut r, 0, Modifiers::NONE);
+    // Ansicht a, b, c; aktiv ist die erste Ansichtszeile (a, Datensatz 2).
+    r.key(Key::ArrowUp, Modifiers::CTRL);
+    assert_eq!(table_cell(&mut r), (2, 0));
+    r.act(Action::Table(TableCmd::RowBelow));
+    assert_eq!(r.text(), "n\nb\na\n\nc\n", "im Text direkt nach dem Datensatz");
+    assert_eq!(table_state(&mut r).rows.rows, vec![2, 3, 1, 4], "in der Ansicht an der Einfügestelle");
+    assert_eq!(table_cell(&mut r), (3, 0));
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn copy_paste_block_roundtrip() {
+    let mut r = Rig::new();
+    let dir = open_csv(&mut r, "tblclip", "t.csv", "a,b,c\n1,2,3\n4,\"5\t6\",7\n,,\n,,\n");
+    r.key(Key::ArrowDown, Modifiers::SHIFT);
+    r.key(Key::ArrowRight, Modifiers::SHIFT);
+    r.frame_with(vec![Event::Copy]);
+    r.frames(1);
+    let clip = r.copied.clone().expect("Kopieren legt Text ab");
+    assert_eq!(clip, "1\t2\n4\t\"5\t6\"");
+    r.key(Key::ArrowDown, Modifiers::CTRL);
+    r.key(Key::ArrowUp, Modifiers::NONE);
+    r.frame_with(vec![Event::Paste(clip)]);
+    r.frames(1);
+    assert_eq!(r.text(), "a,b,c\n1,2,3\n4,\"5\t6\",7\n,1,2\n,4,5\t6\n", "Werte gleich; Tab ist im Komma-CSV kein Grund für Anführungszeichen");
+    assert_eq!(r.app.cur_doc().undo.len(), 1);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn single_value_fills_selection() {
+    let mut r = Rig::new();
+    let dir = open_csv(&mut r, "tblfill", "t.csv", "a,b,c\n1,2,3\n4,5,6\n7,8,9\n");
+    r.key(Key::ArrowDown, Modifiers::SHIFT);
+    r.key(Key::ArrowRight, Modifiers::SHIFT);
+    r.frame_with(vec![Event::Paste("x".into())]);
+    r.frames(1);
+    assert_eq!(r.text(), "a,b,c\nx,x,3\nx,x,6\n7,8,9\n");
+    assert_eq!(r.app.cur_doc().undo.len(), 1, "eine Gruppe");
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn table_menu_only_with_table_and_tablefilter_state_draws() {
+    let mut r = Rig::new();
+    assert!(r.app.table_cmd_state().is_none(), "ohne Tabelle kein Menü");
+    r.app.apply_test_state("tablefilter");
+    r.frames(3);
+    assert!(r.app.table_cmd_state().is_some());
+    let st = table_state(&mut r);
+    assert!(!st.rows.is_identity());
+    assert!(st.rows.rows.len() < 7);
+    assert!(!r.app.cur_doc().is_modified());
 }
