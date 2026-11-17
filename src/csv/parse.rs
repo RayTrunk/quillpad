@@ -151,7 +151,7 @@ pub fn detect(text: &str, ext: Option<&str>) -> Dialect {
     let delim = if ext.is_some_and(|e| e.eq_ignore_ascii_case("tsv") || e.eq_ignore_ascii_case("tab")) {
         '\t'
     } else {
-        let mut best: Option<(char, usize)> = None;
+        let mut best: Option<(char, (usize, usize))> = None;
         for &d in &DELIMS {
             let mut p = parse(sample, d);
             if cut.is_some() && p.records.len() > 1 {
@@ -162,14 +162,13 @@ pub fn detect(text: &str, ext: Option<&str>) -> Dialect {
             for r in &p.records {
                 *counts.entry(r.fields.len()).or_default() += 1;
             }
-            let top = counts
-                .iter()
-                .filter(|(&cols, _)| cols > 1)
-                .map(|(_, &freq)| freq)
-                .max();
-            if let Some(freq) = top {
-                if best.map_or(true, |(_, b)| freq > b) {
-                    best = Some((d, freq));
+            // Gewertet wird (Häufigkeit, Spaltenzahl): bei gleich vielen
+            // gleichmäßigen Zeilen gewinnt der Kandidat mit mehr Spalten –
+            // sonst schlägt ein Dezimalkomma in jeder Zeile das Semikolon.
+            let top = counts.iter().filter(|(&cols, _)| cols > 1).map(|(&cols, &freq)| (freq, cols)).max();
+            if let Some(score) = top {
+                if best.map_or(true, |(_, b)| score > b) {
+                    best = Some((d, score));
                 }
             }
         }
@@ -284,6 +283,19 @@ mod tests {
         assert_eq!(detect("a,b\nc,d\n", Some("tab")).delim, '\t', "auch .tab ist Tab-getrennt");
         assert_eq!(detect("a,b\nc,d\n", Some("TAB")).delim, '\t');
         assert_eq!(detect("hallo\nwelt\n", None).delim, ',');
+    }
+
+    #[test]
+    fn semicolon_wins_over_decimal_comma_in_every_row() {
+        // Preisliste: jede Zeile hat genau ein Dezimalkomma. Komma ergäbe
+        // gleichmäßig 2 Spalten, Semikolon gleichmäßig 7 – mehr Spalten gewinnen.
+        let t = "000019;3;1;2,50;13.01.2025;01.01.2025;01.01.1753\n\
+                 000019;3;2;0,80;30.08.2021;01.07.2020;01.01.1753\n\
+                 \"000019    \";3;3;0,80;20.02.2020;01.06.2008;01.01.1753\n\
+                 000050;2;1;0,50;30.08.2021;01.07.2020;01.01.1753\n";
+        let d = detect(t, Some("csv"));
+        assert_eq!(d.delim, ';');
+        assert!(!d.header);
     }
 
     #[test]
