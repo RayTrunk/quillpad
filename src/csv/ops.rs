@@ -408,22 +408,16 @@ pub fn from_tsv(s: &str) -> Vec<Vec<String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::csv::parse::parse;
 
     #[test]
     fn clear_cells_keeps_quote_style_and_skips_missing() {
-        let t = "a;\"b\";c
-x;;z
-only
-";
+        let t = "a;\"b\";c\nx;;z\nonly\n";
         let p = parse(t, ';');
         let chars: Vec<char> = t.chars().collect();
         let ch = clear_cells(&chars, &p, ';', &[(0, 0), (0, 1), (1, 1), (2, 0), (2, 2)]);
-        assert_eq!(apply(t, &ch), ";\"\";c
-x;;z
-
-");
+        assert_eq!(apply(t, &ch), ";\"\";c\nx;;z\n\n");
     }
-    use crate::csv::parse::parse;
 
     fn d(delim: char) -> Dialect {
         Dialect { delim, header: true }
