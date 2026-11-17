@@ -1833,3 +1833,71 @@ fn table_toggle_keeps_language_colours_of_code() {
     assert_eq!(r.app.cur_doc().hl.csv_delim(), Some(';'));
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+// --- Abschlussprüfung: Reihenfolge gleicher Startpositionen, Rückgängig mit weniger Zeilen ---
+
+#[test]
+fn paste_into_short_row_keeps_cell_order() {
+    let mut r = Rig::new();
+    let dir = open_csv(&mut r, "tblpasteord", "t.csv", "h1,h2,h3,h4\n1,\n");
+    r.key(Key::ArrowRight, Modifiers::NONE);
+    assert_eq!(table_cell(&mut r), (1, 1));
+    r.frame_with(vec![Event::Paste("a\tb\tc".into())]);
+    r.frames(1);
+    assert_eq!(r.text(), "h1,h2,h3,h4\n1,a,b,c\n", "Werte in Spaltenreihenfolge");
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn fill_selection_into_short_row_keeps_cell_order() {
+    let mut r = Rig::new();
+    let dir = open_csv(&mut r, "tblfillord", "t.csv", "h1,h2,h3,h4\n1,\n");
+    r.key(Key::ArrowRight, Modifiers::NONE);
+    r.key(Key::ArrowRight, Modifiers::SHIFT);
+    r.key(Key::ArrowRight, Modifiers::SHIFT);
+    r.frame_with(vec![Event::Paste("x".into())]);
+    r.frames(1);
+    assert_eq!(r.text(), "h1,h2,h3,h4\n1,x,x,x\n");
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn paste_rows_at_end_without_newline_keeps_order() {
+    let mut r = Rig::new();
+    let dir = open_csv(&mut r, "tblpasteend", "t.csv", "h1,h2\n1");
+    r.key(Key::ArrowRight, Modifiers::NONE);
+    r.frame_with(vec![Event::Paste("x\ny".into())]);
+    r.frames(1);
+    assert_eq!(r.text(), "h1,h2\n1,x\n,y", "erst die Zelle, dann die neue Zeile");
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn undo_of_inserted_row_does_not_panic() {
+    let mut r = Rig::new();
+    let dir = open_csv(&mut r, "tblundorow", "t.csv", "a,b\n1,2\n");
+    r.key(Key::Enter, Modifiers::CTRL);
+    assert_eq!(r.text(), "a,b\n1,2\n,\n");
+    r.key(Key::Z, Modifiers::CTRL);
+    assert_eq!(r.text(), "a,b\n1,2\n");
+    assert_eq!(table_state(&mut r).rows.rows, vec![1]);
+    r.key(Key::Y, Modifiers::CTRL);
+    assert_eq!(r.text(), "a,b\n1,2\n,\n");
+    assert_eq!(table_state(&mut r).rows.rows, vec![1, 2]);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn undo_of_paste_with_new_rows_does_not_panic() {
+    let mut r = Rig::new();
+    let dir = open_csv(&mut r, "tblundopaste", "t.csv", "a,b\n1,2\n");
+    r.frame_with(vec![Event::Paste("x\ty\nq\tr\ns\tt".into())]);
+    r.frames(1);
+    assert_eq!(r.text(), "a,b\nx,y\nq,r\ns,t\n");
+    r.key(Key::ArrowDown, Modifiers::CTRL);
+    r.key(Key::Z, Modifiers::CTRL);
+    assert_eq!(r.text(), "a,b\n1,2\n");
+    assert_eq!(table_state(&mut r).rows.rows, vec![1]);
+    assert_eq!(table_cell(&mut r).0, 1);
+    std::fs::remove_dir_all(&dir).unwrap();
+}

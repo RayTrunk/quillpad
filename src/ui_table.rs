@@ -647,6 +647,12 @@ impl Ctx<'_> {
             self.st.seen_rev = self.doc.rev;
             self.st.virt = None;
             self.st.anchor = None;
+            self.st.editing = None;
+            // Rückgängig kann Zeilen und Spalten entfernen: Ansicht sofort auf den Text bringen,
+            // weitere Tasten und das Zeichnen dieses Bildes brauchen gültige Indizes.
+            self.rebuild_view();
+            let (p, _) = parsed(self.doc);
+            self.leave_header(&p);
         }
     }
 

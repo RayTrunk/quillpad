@@ -50,7 +50,8 @@ pub(super) fn paint(
     let cells = painter.with_clip_rect(body);
     for (vr, &rec) in cx.st.rows.rows.iter().enumerate().take(last_vr).skip(first_vr) {
         let y = row_y(vr);
-        let r = &p.records[rec];
+        // Sicherheitsnetz: eine veraltete Ansicht darf das Zeichnen nicht abbrechen.
+        let Some(r) = p.records.get(rec) else { continue };
         let mut x = lay.col_x(&widths, scroll.x, first_col);
         for (c, &w) in widths.iter().enumerate().take(ncols).skip(first_col) {
             if x > body.right() {

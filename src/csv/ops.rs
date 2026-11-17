@@ -11,13 +11,20 @@ pub struct Change {
     pub text: String,
 }
 
-/// Wendet nicht überlappende Änderungen an. Bei gleichem `start` landet die
-/// frühere Änderung der Liste auch im Ergebnis weiter vorn.
-pub fn apply(text: &str, changes: &[Change]) -> String {
-    let mut chars: Vec<char> = text.chars().collect();
+/// Reihenfolge, in der Änderungen angewandt werden: von hinten nach vorn, damit die
+/// Positionen vorderer Änderungen gültig bleiben. Bei gleichem `start` kommt die spätere
+/// Änderung der Liste zuerst dran, die frühere landet so im Ergebnis weiter vorn.
+pub fn back_to_front(changes: &[Change]) -> Vec<usize> {
     let mut order: Vec<usize> = (0..changes.len()).collect();
     order.sort_by(|&a, &b| changes[b].start.cmp(&changes[a].start).then(b.cmp(&a)));
-    for i in order {
+    order
+}
+
+/// Wendet nicht überlappende Änderungen an, in derselben Reihenfolge wie das Dokument.
+#[cfg(test)]
+pub fn apply(text: &str, changes: &[Change]) -> String {
+    let mut chars: Vec<char> = text.chars().collect();
+    for i in back_to_front(changes) {
         let c = &changes[i];
         let end = c.end.min(chars.len());
         let start = c.start.min(end);

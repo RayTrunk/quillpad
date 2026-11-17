@@ -1,6 +1,6 @@
 //! Anbindung der Tabelle ans Dokument: Dialekt, Parse-Cache, Änderungen als eine Gruppe.
 
-use super::ops::Change;
+use super::ops::{back_to_front, Change};
 use super::parse::{detect, field_value, parse, Dialect, Parsed};
 use crate::doc::{Document, Kind, SelSet};
 use ropey::Rope;
@@ -77,14 +77,13 @@ impl DocCsv {
 }
 
 /// Wendet Änderungen als eine Undo-Gruppe an. `false`: nichts zu tun.
-pub fn apply_changes(doc: &mut Document, mut changes: Vec<Change>, before: &SelSet, caret_after: usize) -> bool {
+pub fn apply_changes(doc: &mut Document, changes: Vec<Change>, before: &SelSet, caret_after: usize) -> bool {
     if changes.is_empty() {
         return false;
     }
-    // Von hinten nach vorn, damit die Positionen vorderer Änderungen gültig bleiben.
-    changes.sort_by(|a, b| b.start.cmp(&a.start));
     doc.begin(Kind::Other, before);
-    for c in &changes {
+    for i in back_to_front(&changes) {
+        let c = &changes[i];
         doc.splice(c.start, c.end, &c.text);
     }
     doc.commit(&SelSet::single(caret_after));
