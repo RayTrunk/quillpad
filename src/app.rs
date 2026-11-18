@@ -337,7 +337,7 @@ impl App {
                 "tableedit" => {
                     self.open_sample_table();
                     if let Some(t) = self.cur_view_mut().table.as_mut() {
-                        t.editing = Some("+43 664 98765\nnur abends".into());
+                        t.editing = Some("+43 664 98765\nevenings only".into());
                     }
                 }
                 "tablefilter" => {
@@ -457,14 +457,15 @@ impl App {
         let text = concat!(
             "\"FirstName\",\"LastName\",\"Company\",\"Mobile\",\"Business\",\"Email\",\"Notes\"\n",
             "\"Anna\",\"Berger\",\"Holzbau Berger\",\"+49 170 1234567\",\"+49 89 4410\",\"anna@holzbau.example\",\"\"\n",
-            "\"Max\",\"Huber\",\"Huber & Söhne\",\"+43 664 98765\",\"\",\"max@huber.example\",\"Rückruf\nab 14 Uhr\"\n",
+            "\"Max\",\"Huber\",\"Huber & Söhne\",\"+43 664 98765\",\"\",\"max@huber.example\",\"Call back\nafter 2 pm\"\n",
             "\"Müller, A.\",\"\",\"Praxis am Ring\",\"\",\"+49 30 5550\",\"\",\"\"\n",
-            "\"Lena\",\"Vogt\",\"Vogt Elektro GmbH\",\"+49 151 2223334\",\"+49 711 90\",\"lena.vogt@vogt-elektro.example\",\"Ansprechpartnerin für alle Wartungsverträge im Großraum Stuttgart\"\n",
+            "\"Lena\",\"Vogt\",\"Vogt Elektro GmbH\",\"+49 151 2223334\",\"+49 711 90\",\"lena.vogt@vogt-elektro.example\",\"Contact for all maintenance contracts in the Stuttgart area\"\n",
             "\"Jonas\",\"Keller\"\n",
             "\"Sophie\",\"Lang\",\"Café Lang\",\"+41 79 1112233\",\"\",\"sophie@cafe-lang.example\",\"\"\n",
             "\"Tobias\",\"Roth\",\"Roth IT\",\"+49 160 7654321\",\"+49 40 1200\",\"t.roth@roth-it.example\",\"VIP\"\n",
         );
-        let id = self.alloc_doc("telefonbuch.csv".into(), text, Enc::Utf8Bom, Eol::Crlf);
+        self.drop_blank_tab(0);
+        let id = self.alloc_doc("contacts.csv".into(), text, Enc::Utf8Bom, Eol::Crlf);
         let d = self.docs.get_mut(&id).expect("eben angelegt");
         d.csv = Some(crate::csv::DocCsv::new(crate::csv::detect(text, Some("csv"))));
         let rev = d.rev;
@@ -685,6 +686,15 @@ impl App {
             crate::csv::setup(d);
         }
         let pane = self.active_pane;
+        self.drop_blank_tab(pane);
+        self.add_view(pane, id);
+        self.auto_table_view();
+        self.add_recent(&full);
+        Some(id)
+    }
+
+    /// Ist der einzige Tab des Bereichs ein leeres, unverändertes neues Dokument, weicht er.
+    fn drop_blank_tab(&mut self, pane: usize) {
         let replace_blank = {
             let tabs = &self.panes[pane].tabs;
             tabs.len() == 1 && {
@@ -699,10 +709,6 @@ impl App {
                 self.docs.remove(&old);
             }
         }
-        self.add_view(pane, id);
-        self.auto_table_view();
-        self.add_recent(&full);
-        Some(id)
     }
 
     fn add_recent(&mut self, p: &Path) {

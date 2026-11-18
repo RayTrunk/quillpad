@@ -53,6 +53,7 @@
   .gallery figure, .wide { margin: 0; }
   .gallery figcaption, .wide figcaption { color: var(--dim); font-size: 15px; margin-top: 8px; }
   .wide { margin-top: 20px; }
+  .intro { color: var(--dim); max-width: 820px; margin: -8px 0 20px; }
   .themes { display: flex; flex-wrap: wrap; gap: 10px; margin: 0 0 20px; padding: 0; list-style: none; }
   .themes li { background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; color: var(--dim); font-size: 15px; }
   .themes li::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; background: var(--dot); border: 1px solid #555; }
@@ -75,6 +76,7 @@
     <a class="brand" href="#"><img src="icon.png" alt="">Quillpad</a>
     <div class="links">
       <a href="#features">Features</a>
+      <a href="#csv">CSV</a>
       <a href="#screenshots">Screenshots</a>
       <a href="#themes">Themes</a>
       <a href="#shortcuts">Shortcuts</a>
@@ -114,6 +116,16 @@
       <div class="card"><h3>Three languages</h3><p>The interface follows your system language – English, German or French – and can be switched at any time. Shortcuts are shown the way your language writes them.</p></div>
       <div class="card"><h3>Fits in</h3><p>Installer with Start menu entry, “Open with” and an optional “Edit with Quillpad” context menu; on Linux a menu entry via <code>install.sh</code>.</p></div>
       <div class="card"><h3>Stays current</h3><p>A small notice tells you when a new version is out on GitHub. It checks at most once a day and can be turned off.</p></div>
+    </div>
+  </section>
+
+  <section id="csv">
+    <h2>CSV files as a table</h2>
+    <p class="intro">Open a CSV or TSV file – a phone book export, a database dump – and Quillpad shows it as a table. Delimiter and header row are detected, cells are edited in place, rows and columns can be inserted, moved and deleted. Sorting and filtering only change the view until you choose to write the new order into the file. One click switches back to the plain text, and outside the fields you edit the file stays exactly as it was.</p>
+    <figure class="wide"><img src="screenshots/site-csv-table.png" alt="A CSV phone book shown as a table in the Dark theme" width="1250" height="875" loading="lazy"><figcaption>Table view: column names from the header row, the active cell and its column in the status bar</figcaption></figure>
+    <div class="gallery" style="margin-top: 20px">
+      <figure><img src="screenshots/site-csv-filter.png" alt="The same table filtered for +49 and sorted by company in the Light theme" width="1250" height="875" loading="lazy"><figcaption>Filtered for “+49” and sorted by company – the file itself is unchanged</figcaption></figure>
+      <figure><img src="screenshots/site-csv-text.png" alt="The CSV file as text with coloured columns in the Nord theme" width="1250" height="875" loading="lazy"><figcaption>Text view with coloured columns, Nord theme</figcaption></figure>
     </div>
   </section>
 
