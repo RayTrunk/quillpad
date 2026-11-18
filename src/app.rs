@@ -777,7 +777,20 @@ impl App {
                 d.enc = l.enc;
                 d.eol = l.eol;
                 d.disk_mtime = mtime(&path);
+                let prev = d.csv.as_ref().map(|c| (c.dialect, c.manual));
                 crate::csv::setup(d);
+                // Eine von Hand geöffnete Tabelle (etwa bei einer .txt) behält ihren
+                // Dialekt; setup verwirft ihn bei Dateien, die keine Tabellendateien sind.
+                let shown = self.panes.iter().any(|p| p.tabs.iter().any(|v| v.doc == id && v.table.is_some()));
+                let d = self.docs.get_mut(&id).expect("oben geprüft");
+                if d.csv.is_none() && shown && !d.large {
+                    let mut c = crate::csv::DocCsv::new(match prev {
+                        Some((dialect, true)) => dialect,
+                        _ => crate::csv::detect_doc(d),
+                    });
+                    c.manual = prev.is_some_and(|(_, m)| m);
+                    d.csv = Some(c);
+                }
                 for p in self.panes.iter_mut() {
                     for v in p.tabs.iter_mut().filter(|v| v.doc == id) {
                         v.box_sel = None;

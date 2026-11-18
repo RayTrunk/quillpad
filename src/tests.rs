@@ -2093,3 +2093,27 @@ fn table_survives_ragged_empty_unclosed_and_header_only_files() {
     table_roundtrip_without_panic("headeronly", "Name,Phone\n");
     table_roundtrip_without_panic("headeronlynonl", "Name,Phone");
 }
+
+#[test]
+fn reload_keeps_a_table_opened_by_hand() {
+    // Eine .txt von Hand als Tabelle: nach dem Neuladen bleibt der Dialekt, sonst
+    // stünde die Tabelle ohne CSV-Daten da und die Tabellenbefehle liefen ins Leere.
+    let dir = temp_dir("reloadtbl");
+    let f = dir.join("liste.txt");
+    std::fs::write(&f, "a;b\n1;2\n").unwrap();
+    let mut r = Rig::new();
+    r.app.open_path(&f);
+    r.frames(2);
+    assert!(r.app.cur_doc().csv.is_none());
+    r.act(Action::ToggleTable);
+    let d = r.app.cur_doc().csv.as_ref().unwrap().dialect;
+    r.act(Action::CsvDialect(crate::csv::Dialect { header: !d.header, ..d }));
+    std::fs::write(&f, "a;b\n1;2\n3;4\n").unwrap();
+    let id = r.app.cur_id();
+    r.app.reload_doc(id);
+    r.frames(2);
+    let c = r.app.cur_doc().csv.as_ref().expect("Dialekt nach dem Neuladen noch da");
+    assert_eq!(c.dialect, crate::csv::Dialect { header: !d.header, ..d }, "von Hand gewählter Dialekt bleibt");
+    assert!(r.app.cur_view().table.is_some());
+    std::fs::remove_dir_all(&dir).unwrap();
+}
