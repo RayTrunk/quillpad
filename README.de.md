@@ -21,6 +21,8 @@ Ein schneller Texteditor für Windows und Linux, geschrieben in Rust mit [egui](
 - Oberfläche auf Englisch, Deutsch und Französisch (folgt der Systemsprache)
 - Hinweis auf neue Versionen (abschaltbar)
 
+![CSV-Datei als Tabelle](docs/screenshots/de-csv.png)
+
 ![Designs](docs/screenshots/de-themes.png)
 
 ## Herunterladen und installieren

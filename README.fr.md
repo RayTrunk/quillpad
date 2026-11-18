@@ -21,6 +21,8 @@ Un éditeur de texte rapide pour Windows et Linux, écrit en Rust avec [egui](ht
 - Interface en anglais, allemand et français (suit la langue du système)
 - Avis lorsqu’une nouvelle version est disponible (désactivable)
 
+![Fichier CSV affiché en tableau](docs/screenshots/fr-csv.png)
+
 ![Thèmes](docs/screenshots/fr-themes.png)
 
 ## Télécharger et installer

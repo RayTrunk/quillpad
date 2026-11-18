@@ -21,6 +21,8 @@ A fast text editor for Windows and Linux, written in Rust with [egui](https://gi
 - User interface in English, German and French (follows the system language)
 - Notice when a new version is available (can be turned off)
 
+![CSV file as a table](docs/screenshots/en-csv.png)
+
 ![Themes](docs/screenshots/en-themes.png)
 
 ## Download and install
