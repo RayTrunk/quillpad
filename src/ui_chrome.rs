@@ -367,9 +367,9 @@ impl App {
         if !theme.is_dark() {
             // Kästchen und Eingabefelder klar erkennbar auf dem Fensterhintergrund.
             v.widgets.inactive.bg_fill = pal.bg;
-            v.widgets.inactive.bg_stroke = Stroke::new(1.0, c.line.gamma_multiply(0.85));
+            v.widgets.inactive.bg_stroke = Stroke::new(1.0_f32, c.line.gamma_multiply(0.85));
             v.widgets.inactive.weak_bg_fill = c.tab_inactive.lerp_to_gamma(c.window, 0.6);
-            v.widgets.hovered.bg_stroke = Stroke::new(1.0, c.hover_line);
+            v.widgets.hovered.bg_stroke = Stroke::new(1.0_f32, c.hover_line);
         }
         v.selection.bg_fill = c.hover_line;
         v.selection.stroke.color = c.hover_text;
@@ -383,15 +383,15 @@ impl App {
             }
             v.widgets.inactive.weak_bg_fill = c.window;
             v.widgets.inactive.bg_fill = Color32::WHITE;
-            v.widgets.inactive.bg_stroke = Stroke::new(1.0, crate::theme::W98_DARK);
-            v.widgets.hovered.bg_stroke = Stroke::new(1.0, crate::theme::W98_DARK);
+            v.widgets.inactive.bg_stroke = Stroke::new(1.0_f32, crate::theme::W98_DARK);
+            v.widgets.hovered.bg_stroke = Stroke::new(1.0_f32, crate::theme::W98_DARK);
             v.widgets.active.weak_bg_fill = crate::theme::W98_LIGHT;
             v.widgets.active.bg_fill = crate::theme::W98_LIGHT;
-            v.widgets.active.bg_stroke = Stroke::new(1.0, crate::theme::W98_DARK);
+            v.widgets.active.bg_stroke = Stroke::new(1.0_f32, crate::theme::W98_DARK);
             v.widgets.open.weak_bg_fill = c.hover;
             v.widgets.open.fg_stroke.color = c.hover_text;
-            v.widgets.noninteractive.bg_stroke = Stroke::new(1.0, crate::theme::W98_SHADOW);
-            v.window_stroke = Stroke::new(1.0, crate::theme::W98_DARK);
+            v.widgets.noninteractive.bg_stroke = Stroke::new(1.0_f32, crate::theme::W98_SHADOW);
+            v.window_stroke = Stroke::new(1.0_f32, crate::theme::W98_DARK);
             v.window_shadow = egui::Shadow::NONE;
             v.popup_shadow = egui::Shadow::NONE;
             v.extreme_bg_color = Color32::WHITE;
@@ -530,7 +530,7 @@ impl App {
             theme::bevel(ui.painter(), edit_outer, false);
             edit_outer.shrink(2.0)
         } else {
-            ui.painter().rect_stroke(edit_outer, 0.0, Stroke::new(1.0, c.line), StrokeKind::Inside);
+            ui.painter().rect_stroke(edit_outer, 0.0, Stroke::new(1.0_f32, c.line), StrokeKind::Inside);
             edit_outer.shrink(1.0)
         };
         let pal = self.palette();
@@ -726,10 +726,10 @@ impl App {
             if retro {
                 // Karteireiter: links und oben hell, rechts Schatten, unten offen.
                 let (l, t, r, b) = (tr.left() + 0.5, tr.top() + 0.5, tr.right() - 0.5, tr.bottom());
-                tp.line_segment([pos2(l, b), pos2(l, t)], Stroke::new(1.0, theme::W98_WHITE));
-                tp.line_segment([pos2(l, t), pos2(r, t)], Stroke::new(1.0, theme::W98_WHITE));
-                tp.line_segment([pos2(r, t), pos2(r, b)], Stroke::new(1.0, theme::W98_DARK));
-                tp.line_segment([pos2(r - 1.0, t + 1.0), pos2(r - 1.0, b)], Stroke::new(1.0, theme::W98_SHADOW));
+                tp.line_segment([pos2(l, b), pos2(l, t)], Stroke::new(1.0_f32, theme::W98_WHITE));
+                tp.line_segment([pos2(l, t), pos2(r, t)], Stroke::new(1.0_f32, theme::W98_WHITE));
+                tp.line_segment([pos2(r, t), pos2(r, b)], Stroke::new(1.0_f32, theme::W98_DARK));
+                tp.line_segment([pos2(r - 1.0, t + 1.0), pos2(r - 1.0, b)], Stroke::new(1.0_f32, theme::W98_SHADOW));
             } else if is_active {
                 // Akzent unten in der Farbe des Designs.
                 tp.rect_filled(Rect::from_min_max(pos2(tr.left(), tr.bottom() - 2.0), tr.max), 0.0, c.accent);
@@ -761,7 +761,7 @@ impl App {
                 let col = if over_close { Color32::WHITE } else { c.text_dim };
                 if !icons::paint_glyph(&tp, close, icons::GLYPH_CLOSE, 9.0, col) {
                     let k = close.center();
-                    let st = Stroke::new(1.3, col);
+                    let st = Stroke::new(1.3_f32, col);
                     tp.line_segment([k + vec2(-3.5, -3.5), k + vec2(3.5, 3.5)], st);
                     tp.line_segment([k + vec2(3.5, -3.5), k + vec2(-3.5, 3.5)], st);
                 }
@@ -833,7 +833,7 @@ impl App {
                 let br = Rect::from_min_size(pos2(right - bw * (k + 1.0) - 1.0, rect.top() + 4.0), vec2(bw, rect.height() - 8.0));
                 let r = ui.interact(br, ui.id().with(("tabscroll", pane, label)), Sense::click());
                 painter.rect_filled(br, 0.0, if r.hovered() { c.hover } else { c.menu });
-                painter.rect_stroke(br, 0.0, Stroke::new(1.0, c.line), StrokeKind::Inside);
+                painter.rect_stroke(br, 0.0, Stroke::new(1.0_f32, c.line), StrokeKind::Inside);
                 painter.text(br.center(), Align2::CENTER_CENTER, label, FontId::proportional(9.0), c.text);
                 if r.clicked() {
                     self.panes[pane].scroll += if k > 0.5 { -120.0 } else { 120.0 };
@@ -900,7 +900,7 @@ impl App {
         let x_col = Color32::from_rgb(0x50, 0x70, 0xA0);
         if !icons::paint_glyph(ui.painter(), r, icons::GLYPH_CLOSE, 12.0, x_col) {
             let k = r.center();
-            let st = Stroke::new(1.3, x_col);
+            let st = Stroke::new(1.3_f32, x_col);
             ui.painter().line_segment([k + vec2(-4.5, -4.5), k + vec2(4.5, 4.5)], st);
             ui.painter().line_segment([k + vec2(4.5, -4.5), k + vec2(-4.5, 4.5)], st);
         }
@@ -1270,10 +1270,10 @@ impl App {
         let sep = |ui: &mut Ui| {
             let (r, _) = ui.allocate_exact_size(vec2(8.0, 22.0), Sense::hover());
             let x = r.center().x.round() - 0.5;
-            ui.painter().line_segment([pos2(x, r.top() + 2.0), pos2(x, r.bottom() - 2.0)], Stroke::new(1.0, c.line));
+            ui.painter().line_segment([pos2(x, r.top() + 2.0), pos2(x, r.bottom() - 2.0)], Stroke::new(1.0_f32, c.line));
             if retro {
                 // Eingeprägte Trennlinie: Schatten und Licht nebeneinander.
-                ui.painter().line_segment([pos2(x + 1.0, r.top() + 2.0), pos2(x + 1.0, r.bottom() - 2.0)], Stroke::new(1.0, theme::W98_WHITE));
+                ui.painter().line_segment([pos2(x + 1.0, r.top() + 2.0), pos2(x + 1.0, r.bottom() - 2.0)], Stroke::new(1.0_f32, theme::W98_WHITE));
             }
         };
         let tool = |ui: &mut Ui, icon: Icon, tip: &str, enabled: bool, toggled: bool, action: Action, p: &mut Vec<Action>| {
@@ -1290,9 +1290,9 @@ impl App {
                     theme::bevel_thin(ui.painter(), r.shrink(1.0), true);
                 }
             } else if toggled {
-                ui.painter().rect(r.shrink(1.0), 0.0, c.hover, Stroke::new(1.0, c.hover_line), StrokeKind::Inside);
+                ui.painter().rect(r.shrink(1.0), 0.0, c.hover, Stroke::new(1.0_f32, c.hover_line), StrokeKind::Inside);
             } else if resp.hovered() && enabled {
-                ui.painter().rect(r.shrink(1.0), 0.0, c.hover, Stroke::new(1.0, c.hover_line), StrokeKind::Inside);
+                ui.painter().rect(r.shrink(1.0), 0.0, c.hover, Stroke::new(1.0_f32, c.hover_line), StrokeKind::Inside);
             }
             icons::paint(ui.painter(), icon_r, icon, enabled, dark, retro);
             if resp.on_hover_text(tip).clicked() {
@@ -1353,7 +1353,7 @@ impl App {
         let retro = theme_id.retro();
         let rect = ui.max_rect();
         if !retro {
-            ui.painter().line_segment([pos2(rect.left(), rect.top()), pos2(rect.right(), rect.top())], Stroke::new(1.0, c.line));
+            ui.painter().line_segment([pos2(rect.left(), rect.top()), pos2(rect.right(), rect.top())], Stroke::new(1.0_f32, c.line));
         }
         let csv = self.csv_status();
         let (d, v) = (self.cur_doc(), self.cur_view());

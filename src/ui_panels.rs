@@ -405,12 +405,12 @@ impl App {
         }
         let vy0 = rect.top() + (top as f32 - map_first as f32) * row_h;
         let vr = egui::Rect::from_min_size(pos2(rect.left(), vy0), vec2(rect.width(), page as f32 * row_h));
-        painter.rect(vr, 0.0, Color32::from_rgba_unmultiplied(0x60, 0x80, 0xFF, 40), Stroke::new(1.0, Color32::from_rgb(0x60, 0x80, 0xC0)), StrokeKind::Inside);
+        painter.rect(vr, 0.0, Color32::from_rgba_unmultiplied(0x60, 0x80, 0xFF, 40), Stroke::new(1.0_f32, Color32::from_rgb(0x60, 0x80, 0xC0)), StrokeKind::Inside);
         if let Some(p) = resp.interact_pointer_pos() {
             let target = map_first as f64 + ((p.y - rect.top()) / row_h) as f64 - page as f64 / 2.0;
             self.cur_view_mut().top_row = target.max(0.0);
         }
-        painter.rect_stroke(rect, 0.0, Stroke::new(1.0, chrome(self.settings.theme).line), StrokeKind::Inside);
+        painter.rect_stroke(rect, 0.0, Stroke::new(1.0_f32, chrome(self.settings.theme).line), StrokeKind::Inside);
     }
 
     pub fn draw_dialogs(&mut self, ctx: &Context) {

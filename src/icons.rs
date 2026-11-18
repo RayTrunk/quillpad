@@ -167,7 +167,7 @@ impl G<'_> {
     }
     fn frame(&self, x0: f32, y0: f32, x1: f32, y1: f32, fill: u32, line: u32) {
         let r = Rect::from_min_max(self.pt(x0, y0), self.pt(x1, y1));
-        self.p.rect(r, CornerRadius::ZERO, self.col(fill), Stroke::new(1.0, self.col(line)), StrokeKind::Inside);
+        self.p.rect(r, CornerRadius::ZERO, self.col(fill), Stroke::new(1.0_f32, self.col(line)), StrokeKind::Inside);
     }
     fn line(&self, pts: &[(f32, f32)], w: f32, c: u32) {
         let v: Vec<Pos2> = pts.iter().map(|(x, y)| self.pt(*x, *y)).collect();
@@ -358,5 +358,5 @@ pub fn paint_lock(p: &Painter, r: Rect, color: Color32) {
     let c = r.center();
     let body = Rect::from_center_size(c + egui::vec2(0.0, 2.0), egui::vec2(9.0, 7.0));
     p.rect_filled(body, 1.0, color);
-    p.circle_stroke(c + egui::vec2(0.0, -1.5), 3.0, Stroke::new(1.4, color));
+    p.circle_stroke(c + egui::vec2(0.0, -1.5), 3.0, Stroke::new(1.4_f32, color));
 }

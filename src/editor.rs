@@ -1061,7 +1061,7 @@ pub fn show(ui: &mut Ui, doc: &mut Document, v: &mut View, o: &EdOpts, m: &mut M
                 let px = (origin_x + gx).round() + 0.5;
                 clip_text.line_segment(
                     [pos2(px, r.y), pos2(px, r.y + m.line_h)],
-                    Stroke::new(1.0, pal.guide),
+                    Stroke::new(1.0_f32, pal.guide),
                 );
                 gx += tab_w;
             }
@@ -1125,7 +1125,7 @@ pub fn show(ui: &mut Ui, doc: &mut Document, v: &mut View, o: &EdOpts, m: &mut M
                 if o.show_ws {
                     let mid = r.y + m.line_h * 0.5;
                     let (x0, x1) = (origin_x + cx + 2.0, origin_x + xs[i + 1] - 2.0);
-                    let st = Stroke::new(1.0, pal.symbol);
+                    let st = Stroke::new(1.0_f32, pal.symbol);
                     clip_text.line_segment([pos2(x0, mid), pos2(x1, mid)], st);
                     clip_text.line_segment([pos2(x1 - 3.0, mid - 3.0), pos2(x1, mid)], st);
                     clip_text.line_segment([pos2(x1 - 3.0, mid + 3.0), pos2(x1, mid)], st);
@@ -1173,7 +1173,7 @@ pub fn show(ui: &mut Ui, doc: &mut Document, v: &mut View, o: &EdOpts, m: &mut M
             let by = r.y + m.line_h - 1.0;
             clip_text.line_segment(
                 [pos2(text_rect.left(), by), pos2(text_rect.right(), by)],
-                Stroke::new(1.0, pal.fold),
+                Stroke::new(1.0_f32, pal.fold),
             );
         }
     }
@@ -1246,10 +1246,10 @@ pub fn show(ui: &mut Ui, doc: &mut Document, v: &mut View, o: &EdOpts, m: &mut M
             let c = pos2(margin_rect.left() + bookmark_w + (margin_w - bookmark_w) * 0.5, r.y + m.line_h * 0.5);
             let box_r = Rect::from_center_size(c, vec2(9.0, 9.0));
             gp.rect_filled(box_r, 0.0, pal.bg);
-            gp.rect_stroke(box_r, 0.0, Stroke::new(1.0, pal.fold), StrokeKind::Inside);
-            gp.line_segment([c - vec2(2.0, 0.0), c + vec2(2.5, 0.0)], Stroke::new(1.0, pal.fold));
+            gp.rect_stroke(box_r, 0.0, Stroke::new(1.0_f32, pal.fold), StrokeKind::Inside);
+            gp.line_segment([c - vec2(2.0, 0.0), c + vec2(2.5, 0.0)], Stroke::new(1.0_f32, pal.fold));
             if is_folded {
-                gp.line_segment([c - vec2(0.0, 2.0), c + vec2(0.0, 2.5)], Stroke::new(1.0, pal.fold));
+                gp.line_segment([c - vec2(0.0, 2.0), c + vec2(0.0, 2.5)], Stroke::new(1.0_f32, pal.fold));
             }
         }
     }

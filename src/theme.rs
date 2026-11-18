@@ -282,7 +282,7 @@ pub const W98_SHADOW: Color32 = rgb(0x808080);
 pub const W98_DARK: Color32 = rgb(0x000000);
 
 fn edges(p: &Painter, r: Rect, tl: Color32, br: Color32) {
-    let s = |c| Stroke::new(1.0, c);
+    let s = |c| Stroke::new(1.0_f32, c);
     // Halbe Pixel, damit die Linien scharf auf dem Raster liegen.
     let (l, t, rr, bb) = (r.min.x + 0.5, r.min.y + 0.5, r.max.x - 0.5, r.max.y - 0.5);
     p.line_segment([pos2(l, bb), pos2(l, t)], s(tl));
